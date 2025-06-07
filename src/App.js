@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, getDocs, doc, onSnapshot, deleteDoc, updateDoc, query, where, orderBy, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-// Note: jsPDF, jspdf-autotable, and xlsx are now loaded via script tags in the main App component
+// Note: jsPDF, jspdf-autotable, and xlsx are loaded via script tags in the main App component
 // to resolve bundling issues in this environment.
 
 // --- Helper Functions & Configuration ---
@@ -538,8 +538,6 @@ const App = () => {
     // Data states
     const [transactions, setTransactions] = useState([]);
     const [invoices, setInvoices] = useState([]);
-    const [investors, setInvestors] = useState([]); // Placeholder for future use
-    const [balanceSheet, setBalanceSheet] = useState({ assets: [], liabilities: [] }); // Placeholder for future use
     
     const categories = useMemo(() => {
         const catSet = new Set(transactions.map(t => t.category));
@@ -633,7 +631,7 @@ const App = () => {
             case 'transactions':
                 return <Transactions user={user} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded}/>;
             case 'invoices':
-                return <Invoices user={user} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded}/>;
+                return <Invoices user={user} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} />;
             case 'balance':
                 return <Card><h2 className="text-2xl font-bold">Balance Sheet</h2><p className="mt-4 text-gray-500">Feature coming soon!</p></Card>;
             case 'investors':
@@ -663,14 +661,14 @@ const App = () => {
         );
     }
     
-    const NavLink = ({ icon, label, viewName }) => (
+    const NavLink = ({ label, viewName }) => (
         <li key={viewName}>
-            <a href="#"
-               onClick={(e) => { e.preventDefault(); setView(viewName); isSidebarOpen && setIsSidebarOpen(false); }}
-               className={`flex items-center p-2 text-base font-normal rounded-lg transition-colors duration-200 ${view === viewName ? 'bg-blue-600 text-white' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+            <button
+               onClick={() => { setView(viewName); isSidebarOpen && setIsSidebarOpen(false); }}
+               className={`flex items-center p-2 text-base font-normal rounded-lg transition-colors duration-200 w-full text-left ${view === viewName ? 'bg-blue-600 text-white' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                 <Icon path={ICONS[viewName]} className={`w-6 h-6 ${view === viewName ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
                 <span className="ml-3">{label}</span>
-            </a>
+            </button>
         </li>
     );
 
@@ -684,12 +682,12 @@ const App = () => {
                                 <span className="sr-only">Open sidebar</span>
                                 <svg className="w-6 h-6" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path clipRule="evenodd" fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z"></path></svg>
                             </button>
-                            <a href="#" className="flex ml-2 md:mr-24">
+                            <button onClick={() => setView('dashboard')} className="flex ml-2 md:mr-24">
                                 <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap dark:text-white">Amigos</span>
-                            </a>
+                            </button>
                         </div>
                          <div className="flex items-center">
-                            <img src={user.photoURL} alt="user photo" className="w-8 h-8 rounded-full" />
+                            <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
                         </div>
                     </div>
                  </div>
@@ -697,16 +695,16 @@ const App = () => {
             
             <aside className={`fixed top-0 left-0 z-30 w-64 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 flex flex-col">
-                    <a href="#" onClick={(e) => { e.preventDefault(); setView('dashboard'); }} className="flex items-center pl-2.5 mb-5">
+                    <button onClick={() => setView('dashboard')} className="flex items-center pl-2.5 mb-5 text-left">
                         <span className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos</span>
-                    </a>
+                    </button>
                     <ul className="space-y-2 flex-grow">
-                        <NavLink icon={<Icon path={ICONS.dashboard} />} label="Dashboard" viewName="dashboard"/>
-                        <NavLink icon={<Icon path={ICONS.transactions} />} label="Transactions" viewName="transactions"/>
-                        <NavLink icon={<Icon path={ICONS.invoices} />} label="Invoices" viewName="invoices"/>
-                        <NavLink icon={<Icon path={ICONS.balance} />} label="Balance Sheet" viewName="balance"/>
-                        <NavLink icon={<Icon path={ICONS.investors} />} label="Investors" viewName="investors"/>
-                        <NavLink icon={<Icon path={ICONS.payments} />} label="Payments" viewName="payments"/>
+                        <NavLink label="Dashboard" viewName="dashboard"/>
+                        <NavLink label="Transactions" viewName="transactions"/>
+                        <NavLink label="Invoices" viewName="invoices"/>
+                        <NavLink label="Balance Sheet" viewName="balance"/>
+                        <NavLink label="Investors" viewName="investors"/>
+                        <NavLink label="Payments" viewName="payments"/>
                     </ul>
                     <div className="mt-auto">
                          <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg mb-4">
@@ -737,3 +735,4 @@ const App = () => {
 };
 
 export default App;
+
