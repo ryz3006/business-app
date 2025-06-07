@@ -889,7 +889,7 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
     const handleSubmit = () => {
         const project = projects.find(p => p.id === projectToDelete);
         if (project) {
-            handleDeleteProject(project);
+            onDeleteProject(project);
         } else {
             alert("Please select a project to delete.");
         }
