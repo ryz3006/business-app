@@ -225,7 +225,7 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
     );
 };
 
-const Transactions = ({ user, transactions, setTransactions, categories }) => {
+const Transactions = ({ user, transactions, setTransactions, categories, exportLibsLoaded }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -259,11 +259,7 @@ const Transactions = ({ user, transactions, setTransactions, categories }) => {
     };
     
     const exportToPDF = () => {
-        const { jsPDF } = window;
-        if (!jsPDF) {
-            alert("PDF library is still loading. Please try again in a moment.");
-            return;
-        }
+        const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         doc.text("Transactions", 14, 16);
         doc.autoTable({
@@ -281,10 +277,6 @@ const Transactions = ({ user, transactions, setTransactions, categories }) => {
 
     const exportToExcel = () => {
         const { XLSX } = window;
-         if (!XLSX) {
-            alert("Excel library is still loading. Please try again in a moment.");
-            return;
-        }
         const worksheet = XLSX.utils.json_to_sheet(transactions.map(t => ({
             Date: new Date(t.date).toLocaleDateString(),
             Description: t.description,
@@ -312,10 +304,10 @@ const Transactions = ({ user, transactions, setTransactions, categories }) => {
                     <Button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }}>
                         <Icon path={ICONS.plus} className="w-5 h-5"/> New Transaction
                     </Button>
-                    <Button onClick={exportToPDF} variant="secondary">
+                    <Button onClick={exportToPDF} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : ""}>
                         <Icon path={ICONS.download} className="w-5 h-5"/> PDF
                     </Button>
-                    <Button onClick={exportToExcel} variant="secondary">
+                    <Button onClick={exportToExcel} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : ""}>
                         <Icon path={ICONS.download} className="w-5 h-5"/> Excel
                     </Button>
                 </div>
@@ -402,7 +394,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     );
 };
 
-const Invoices = ({ user, invoices, setInvoices }) => {
+const Invoices = ({ user, invoices, setInvoices, exportLibsLoaded }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
     
@@ -450,11 +442,7 @@ const Invoices = ({ user, invoices, setInvoices }) => {
     };
     
     const generateInvoicePDF = (invoice) => {
-        const { jsPDF } = window;
-        if (!jsPDF) {
-            alert("PDF library is still loading. Please try again in a moment.");
-            return;
-        }
+        const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         doc.setFontSize(22);
         doc.text("Invoice", 105, 20, { align: 'center' });
@@ -511,7 +499,7 @@ const Invoices = ({ user, invoices, setInvoices }) => {
                         <p className="text-2xl font-bold text-gray-900 dark:text-white my-4">₹{inv.amount.toLocaleString('en-IN')}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
                         <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                             <button onClick={() => generateInvoicePDF(inv)} className="text-gray-500 hover:text-gray-700 dark:hover:text-white flex-1 flex items-center justify-center gap-2">
+                             <button onClick={() => generateInvoicePDF(inv)} disabled={!exportLibsLoaded} className="text-gray-500 hover:text-gray-700 dark:hover:text-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                                 <Icon path={ICONS.download} className="w-5 h-5" /> PDF
                             </button>
                             {inv.fileURL && (
@@ -538,6 +526,7 @@ const App = () => {
     const [loading, setLoading] = useState(true);
     const [view, setView] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [exportLibsLoaded, setExportLibsLoaded] = useState(false);
 
     // Data states
     const [transactions, setTransactions] = useState([]);
@@ -547,6 +536,17 @@ const App = () => {
         const catSet = new Set(transactions.map(t => t.category));
         return Array.from(catSet);
     }, [transactions]);
+
+    // Check if the external export libraries have loaded
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (window.jspdf && window.XLSX) {
+                setExportLibsLoaded(true);
+                clearInterval(interval);
+            }
+        }, 100);
+        return () => clearInterval(interval); // Cleanup on unmount
+    }, []);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -605,9 +605,9 @@ const App = () => {
             case 'dashboard':
                 return <Dashboard user={user} transactions={transactions} invoices={invoices} setView={setView}/>;
             case 'transactions':
-                return <Transactions user={user} transactions={transactions} setTransactions={setTransactions} categories={categories} />;
+                return <Transactions user={user} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded}/>;
             case 'invoices':
-                return <Invoices user={user} invoices={invoices} setInvoices={setInvoices} />;
+                return <Invoices user={user} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} />;
             case 'balance':
                 return <Card><h2 className="text-2xl font-bold">Balance Sheet</h2><p className="mt-4 text-gray-500">Feature coming soon!</p></Card>;
             case 'investors':
@@ -710,7 +710,4 @@ const App = () => {
     );
 };
 
-export default App;
-" and want to explain the following.
-The export to PDF and Excel is working, but the buttons are not disabled while the libraries are loading.
-Could you explain th
+export default A
