@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, collectionGroup } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- Helper Functions & Configuration ---
@@ -984,4 +984,4 @@ const NavLink = ({ label, viewName, currentView, setView, setIsSidebarOpen }) =>
     </li>
 );
 
-export default App;
+export default A
