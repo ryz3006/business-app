@@ -736,12 +736,19 @@ const App = () => {
     }
     
     if (!selectedProject) {
-        return <ProjectSelector 
+        return (
+            <div>
+                <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
+                <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
+                <ProjectSelector 
+                    user={user}
                     projects={allProjects} 
                     onSelectProject={setSelectedProject} 
                     onAddProject={() => setModal({isOpen: true, type: 'addProject'})}
-                    userEmail={user.email}
-                />;
+                    onSignOut={handleSignOut}
+                />
+            </div>
+        );
     }
 
     return (
@@ -828,18 +835,27 @@ const LoginScreen = ({ onSignIn }) => (
     </div>
 );
 
-const ProjectSelector = ({ projects, onSelectProject, onAddProject, userEmail }) => (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex justify-center items-center p-4">
+const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSignOut }) => (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center p-4">
         <div className="w-full max-w-2xl">
             <Card>
-                <h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-2">Select a Project</h2>
-                <p className="text-center text-gray-500 dark:text-gray-400 mb-8">Choose a project to work on, or create a new one.</p>
+                 <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Select a Project</h2>
+                        <p className="text-gray-500 dark:text-gray-400">Choose a project or create a new one.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                         <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full" />
+                         <Button onClick={onSignOut} variant="secondary">Sign Out</Button>
+                    </div>
+                </div>
+
                 <div className="space-y-4 mb-8">
                     {projects.map(p => (
                         <button key={p.id} onClick={() => onSelectProject(p)} className="w-full text-left p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                             <h3 className="font-bold text-lg text-gray-900 dark:text-white">{p.name}</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {p.ownerEmail === userEmail ? "Owner" : `Shared by ${p.ownerEmail}`}
+                                {p.ownerEmail === user.email ? "Owner" : `Shared by ${p.ownerEmail}`}
                             </p>
                         </button>
                     ))}
