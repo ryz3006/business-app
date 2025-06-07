@@ -5,7 +5,7 @@ import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-// Note: jsPDF, jspdf-autotable, and xlsx are loaded via script tags in the main App component
+// Note: jsPDF, jspdf-autotable, and xlsx are now loaded via script tags in the main App component
 // to resolve bundling issues in this environment.
 
 // --- Helper Functions & Configuration ---
@@ -561,14 +561,20 @@ const App = () => {
             });
         };
 
-        Promise.all([
-            loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf-script'),
-            loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js', 'jspdf-autotable-script'),
-            loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'xlsx-script')
-        ]).then(() => {
-            setExportLibsLoaded(true);
-            console.log("Export libraries loaded successfully.");
-        }).catch(error => console.error(error));
+        // Load scripts sequentially to prevent race conditions
+        const loadExportScripts = async () => {
+            try {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', 'jspdf-script');
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js', 'jspdf-autotable-script');
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'xlsx-script');
+                setExportLibsLoaded(true);
+                console.log("Export libraries loaded successfully.");
+            } catch (error) {
+                console.error("Failed to load export libraries:", error);
+            }
+        };
+        
+        loadExportScripts();
 
     }, []);
 
@@ -735,4 +741,3 @@ const App = () => {
 };
 
 export default App;
-
