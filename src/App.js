@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, collectionGroup } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // --- Helper Functions & Configuration ---
@@ -36,9 +36,7 @@ const ICONS = {
     dashboard: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z",
     transactions: "M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5",
     invoices: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
-    balance: "M12 6v12m-3-6h6",
-    investors: "M18 18.72a9.094 9.094 0 003.741-.479 1 1 0 00.489-1.214A8.102 8.102 0 0112.13 4.23a1 1 0 00-1.214.489A9.094 9.094 0 006 18.72a1 1 0 00.489 1.214A8.102 8.102 0 0111.87 21.77a1 1 0 001.214-.489A9.094 9.094 0 0018 18.72z",
-    payments: "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h6m-6 2.25h6M3 13.5h6m-6 2.25h6",
+    settings: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.485.4.664 1.076.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281zM12 15a3 3 0 100-6 3 3 0 000 6z",
     logout: "M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75",
     plus: "M12 4.5v15m7.5-7.5h-15",
     edit: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10",
@@ -46,6 +44,7 @@ const ICONS = {
     download: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3",
     upload: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v12",
     close: "M6 18L18 6M6 6l12 12",
+    back: "M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
 };
 
 // --- Reusable UI Components ---
@@ -108,7 +107,7 @@ const Select = React.forwardRef(({ label, id, children, ...props }, ref) => (
 
 // --- Core Feature Components ---
 
-const Dashboard = ({ user, transactions, invoices, setView }) => {
+const Dashboard = ({ transactions, invoices, setView }) => {
     const stats = useMemo(() => {
         const now = new Date();
         const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -225,19 +224,20 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
     );
 };
 
-const Transactions = ({ user, transactions, setTransactions, categories, exportLibsLoaded }) => {
+const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
 
     const handleSave = async (data) => {
-        if (!user) return;
+        if (!user || !selectedProject) return;
         try {
+            const path = `users/${user.uid}/projects/${selectedProject.id}/transactions`;
             if (editingTransaction) {
-                const docRef = doc(db, 'users', user.uid, 'transactions', editingTransaction.id);
+                const docRef = doc(db, path, editingTransaction.id);
                 await updateDoc(docRef, data);
             } else {
-                await addDoc(collection(db, 'users', user.uid, 'transactions'), {
+                await addDoc(collection(db, path), {
                     ...data,
                     createdAt: new Date(),
                 });
@@ -250,9 +250,10 @@ const Transactions = ({ user, transactions, setTransactions, categories, exportL
     };
 
     const handleDelete = async (id) => {
-        if (!user || !window.confirm('Are you sure you want to delete this transaction?')) return;
+        if (!user || !selectedProject || !window.confirm('Are you sure you want to delete this transaction?')) return;
         try {
-            await deleteDoc(doc(db, 'users', user.uid, 'transactions', id));
+            const path = `users/${user.uid}/projects/${selectedProject.id}/transactions`;
+            await deleteDoc(doc(db, path, id));
         } catch (error) {
             console.error("Error deleting transaction: ", error);
         }
@@ -261,7 +262,7 @@ const Transactions = ({ user, transactions, setTransactions, categories, exportL
     const exportToPDF = () => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.text("Transactions", 14, 16);
+        doc.text(`Transactions for ${selectedProject.name}`, 14, 16);
         doc.autoTable({
             head: [['Date', 'Description', 'Category', 'Type', 'Amount']],
             body: transactions.map(t => [
@@ -272,7 +273,7 @@ const Transactions = ({ user, transactions, setTransactions, categories, exportL
                 `₹${t.amount.toLocaleString('en-IN')}`
             ]),
         });
-        doc.save('transactions.pdf');
+        doc.save(`${selectedProject.name}-transactions.pdf`);
     };
 
     const exportToExcel = () => {
@@ -287,7 +288,7 @@ const Transactions = ({ user, transactions, setTransactions, categories, exportL
         })));
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
-        XLSX.writeFile(workbook, "transactions.xlsx");
+        XLSX.writeFile(workbook, `${selectedProject.name}-transactions.xlsx`);
     };
 
     const filteredTransactions = useMemo(() => {
@@ -394,30 +395,31 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     );
 };
 
-const Invoices = ({ user, invoices, setInvoices, exportLibsLoaded }) => {
+const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
     
     const handleSave = async (data, pdfFile) => {
-        if (!user) return;
+        if (!user || !selectedProject) return;
         try {
             let fileURL = editingInvoice?.fileURL || '';
             let filePath = editingInvoice?.filePath || '';
 
             if (pdfFile) {
-                const storageRef = ref(storage, `users/${user.uid}/invoices/${Date.now()}_${pdfFile.name}`);
+                const storageRef = ref(storage, `users/${user.uid}/projects/${selectedProject.id}/invoices/${Date.now()}_${pdfFile.name}`);
                 const snapshot = await uploadBytes(storageRef, pdfFile);
                 fileURL = await getDownloadURL(snapshot.ref);
                 filePath = snapshot.ref.fullPath;
             }
-
+            
+            const path = `users/${user.uid}/projects/${selectedProject.id}/invoices`;
             const invoiceData = { ...data, fileURL, filePath };
             
             if (editingInvoice) {
-                const docRef = doc(db, 'users', user.uid, 'invoices', editingInvoice.id);
+                const docRef = doc(db, path, editingInvoice.id);
                 await updateDoc(docRef, invoiceData);
             } else {
-                await addDoc(collection(db, 'users', user.uid, 'invoices'), {
+                await addDoc(collection(db, path), {
                     ...invoiceData,
                     createdAt: new Date(),
                     invoiceNumber: `INV-${Date.now().toString().slice(-6)}`
@@ -431,11 +433,11 @@ const Invoices = ({ user, invoices, setInvoices, exportLibsLoaded }) => {
     };
 
     const handleDelete = async (id) => {
-        if (!user || !window.confirm('Are you sure? This will delete the invoice record.')) return;
+        if (!user || !selectedProject || !window.confirm('Are you sure? This will delete the invoice record.')) return;
         try {
-            await deleteDoc(doc(db, 'users', user.uid, 'invoices', id));
+            const path = `users/${user.uid}/projects/${selectedProject.id}/invoices`;
+            await deleteDoc(doc(db, path, id));
             // Note: This does not delete the file from storage to prevent accidental data loss.
-            // A cleanup function could be implemented for that.
         } catch (error) {
             console.error("Error deleting invoice: ", error);
         }
@@ -518,7 +520,6 @@ const Invoices = ({ user, invoices, setInvoices, exportLibsLoaded }) => {
     );
 };
 
-
 // --- Main App Component ---
 
 const App = () => {
@@ -527,11 +528,19 @@ const App = () => {
     const [view, setView] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [exportLibsLoaded, setExportLibsLoaded] = useState(false);
+    
+    // Project state
+    const [projects, setProjects] = useState([]);
+    const [sharedProjects, setSharedProjects] = useState([]);
+    const [selectedProject, setSelectedProject] = useState(null);
+    const [modal, setModal] = useState({ isOpen: false, type: '', data: null });
 
     // Data states
     const [transactions, setTransactions] = useState([]);
     const [invoices, setInvoices] = useState([]);
     
+    const allProjects = useMemo(() => [...projects, ...sharedProjects], [projects, sharedProjects]);
+
     const categories = useMemo(() => {
         const catSet = new Set(transactions.map(t => t.category));
         return Array.from(catSet);
@@ -548,39 +557,77 @@ const App = () => {
         return () => clearInterval(interval); // Cleanup on unmount
     }, []);
 
+    // Auth listener
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            setUser(currentUser);
+            if (currentUser) {
+                setUser(currentUser);
+            } else {
+                setUser(null);
+                setProjects([]);
+                setSharedProjects([]);
+                setSelectedProject(null);
+                setTransactions([]);
+                setInvoices([]);
+            }
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
+    // Fetch user's own and shared projects
     useEffect(() => {
-        if (user) {
-            const transactionQuery = query(collection(db, 'users', user.uid, 'transactions'), orderBy('date', 'desc'));
-            const unsubscribeTransactions = onSnapshot(transactionQuery, (snapshot) => {
-                const fetchedTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setTransactions(fetchedTransactions);
-            });
+        if (!user) return;
 
-            const invoiceQuery = query(collection(db, 'users', user.uid, 'invoices'), orderBy('createdAt', 'desc'));
-            const unsubscribeInvoices = onSnapshot(invoiceQuery, (snapshot) => {
-                const fetchedInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setInvoices(fetchedInvoices);
-            });
+        // Fetch owned projects
+        const projectsQuery = query(collection(db, 'users', user.uid, 'projects'), orderBy('createdAt', 'desc'));
+        const unsubscribeProjects = onSnapshot(projectsQuery, (snapshot) => {
+            const fetchedProjects = snapshot.docs.map(doc => ({ id: doc.id, ownerId: user.uid, ...doc.data() }));
+            setProjects(fetchedProjects);
+        });
 
-            // Unsubscribe when component unmounts or user logs out
-            return () => {
-                unsubscribeTransactions();
-                unsubscribeInvoices();
-            };
-        } else {
-            // Clear data on logout
+        // Fetch shared projects
+        const sharedProjectsQuery = query(collectionGroup(db, 'projects'), where(`contributors.${user.email.replace(/\./g, '_')}`, 'in', ['read', 'read-write']));
+        const unsubscribeShared = onSnapshot(sharedProjectsQuery, (snapshot) => {
+            const fetchedShared = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSharedProjects(fetchedShared);
+        });
+
+
+        return () => {
+            unsubscribeProjects();
+            unsubscribeShared();
+        };
+    }, [user]);
+    
+    // Fetch data for the selected project
+    useEffect(() => {
+        if (!user || !selectedProject) {
             setTransactions([]);
             setInvoices([]);
-        }
-    }, [user]);
+            return;
+        };
+
+        const projectPath = `users/${selectedProject.ownerId}/projects/${selectedProject.id}`;
+
+        const transactionQuery = query(collection(db, projectPath, 'transactions'), orderBy('date', 'desc'));
+        const unsubscribeTransactions = onSnapshot(transactionQuery, (snapshot) => {
+            const fetchedTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setTransactions(fetchedTransactions);
+        });
+
+        const invoiceQuery = query(collection(db, projectPath, 'invoices'), orderBy('createdAt', 'desc'));
+        const unsubscribeInvoices = onSnapshot(invoiceQuery, (snapshot) => {
+            const fetchedInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setInvoices(fetchedInvoices);
+        });
+
+        return () => {
+            unsubscribeTransactions();
+            unsubscribeInvoices();
+        };
+    }, [user, selectedProject]);
+
 
     const handleGoogleSignIn = async () => {
         const provider = new GoogleAuthProvider();
@@ -599,23 +646,84 @@ const App = () => {
             console.error("Sign out error:", error);
         }
     };
+    
+    // --- Project Management Functions ---
+    const handleAddProject = async (projectName) => {
+        if (!user) return;
+        if (projects.length >= 5) {
+            setModal({ isOpen: true, type: 'limitReached' });
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, `users/${user.uid}/projects`), {
+                name: projectName,
+                ownerId: user.uid,
+                ownerEmail: user.email,
+                createdAt: new Date(),
+                contributors: {}
+            });
+            setModal({ isOpen: false });
+        } catch (error) {
+            console.error("Error adding project:", error);
+        }
+    };
+
+    const handleEditProject = async (projectId, newName) => {
+        if(!user) return;
+        try {
+            const docRef = doc(db, `users/${user.uid}/projects/${projectId}`);
+            await updateDoc(docRef, { name: newName });
+            setModal({ isOpen: false });
+        } catch (error) {
+            console.error("Error updating project:", error);
+        }
+    }
+    
+    const handleDeleteProject = async (projectToDelete) => {
+        if(!user || projectToDelete.ownerId !== user.uid) {
+            alert("You can only delete projects you own.");
+            return;
+        };
+        if (!window.confirm(`Are you sure you want to permanently delete the project "${projectToDelete.name}" and all its data? This cannot be undone.`)) return;
+
+        try {
+            // This is a simplified deletion. For a production app, use a Cloud Function for robust cascading deletes.
+            const projectRef = doc(db, `users/${user.uid}/projects/${projectToDelete.id}`);
+            // Delete subcollections (simplified for now)
+            const transactionsRef = collection(projectRef, 'transactions');
+            const invoicesRef = collection(projectRef, 'invoices');
+            const transSnap = await getDocs(transactionsRef);
+            const invSnap = await getDocs(invoicesRef);
+            const batch = writeBatch(db);
+            transSnap.forEach(doc => batch.delete(doc.ref));
+            invSnap.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+
+            // Delete the project document itself
+            await deleteDoc(projectRef);
+
+            setSelectedProject(null); // Deselect project
+            setModal({ isOpen: false }); // Close any open modals
+
+        } catch (error) {
+            console.error("Error deleting project:", error);
+        }
+    }
+
 
     const renderView = () => {
         switch (view) {
             case 'dashboard':
-                return <Dashboard user={user} transactions={transactions} invoices={invoices} setView={setView}/>;
+                return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
             case 'transactions':
-                return <Transactions user={user} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded}/>;
+                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded}/>;
             case 'invoices':
-                return <Invoices user={user} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} />;
-            case 'balance':
-                return <Card><h2 className="text-2xl font-bold">Balance Sheet</h2><p className="mt-4 text-gray-500">Feature coming soon!</p></Card>;
-            case 'investors':
-                return <Card><h2 className="text-2xl font-bold">Investor Shares</h2><p className="mt-4 text-gray-500">Feature coming soon!</p></Card>;
-            case 'payments':
-                 return <Card><h2 className="text-2xl font-bold">Payments</h2><p className="mt-4 text-gray-500">Feature coming soon!</p></Card>;
+                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} />;
+            case 'settings':
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} />;
             default:
-                return <Dashboard user={user} transactions={transactions} invoices={invoices} setView={setView}/>;
+                return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
     };
 
@@ -624,32 +732,24 @@ const App = () => {
     }
 
     if (!user) {
-        return (
-            <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center text-center p-4">
-                <h1 className="text-4xl md:text-5xl font-bold text-gray-800 dark:text-white">Amigos</h1>
-                <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400 mb-8">Business Manager</p>
-                <p className="max-w-xl mb-8 text-gray-600 dark:text-gray-300">Your all-in-one solution for managing personal and business finances. Track income, expenses, invoices, and more, all in real-time.</p>
-                <Button onClick={handleGoogleSignIn}>
-                    <svg className="w-5 h-5 mr-2" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 64.5c-24.3-23.6-58.3-38.6-96.7-38.6-73.2 0-132.3 59.2-132.3 132.3s59.1 132.3 132.3 132.3c76.9 0 111.2-51.8 115.8-77.9H248v-62h236.4c.8 12.2 1.2 24.5 1.2 37.4z"></path></svg>
-                    Sign in with Google
-                </Button>
-            </div>
-        );
+        return <LoginScreen onSignIn={handleGoogleSignIn} />;
     }
     
-    const NavLink = ({ label, viewName }) => (
-        <li key={viewName}>
-            <button
-               onClick={() => { setView(viewName); isSidebarOpen && setIsSidebarOpen(false); }}
-               className={`flex items-center p-2 text-base font-normal rounded-lg transition-colors duration-200 w-full text-left ${view === viewName ? 'bg-blue-600 text-white' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
-                <Icon path={ICONS[viewName]} className={`w-6 h-6 ${view === viewName ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
-                <span className="ml-3">{label}</span>
-            </button>
-        </li>
-    );
+    if (!selectedProject) {
+        return <ProjectSelector 
+                    projects={allProjects} 
+                    onSelectProject={setSelectedProject} 
+                    onAddProject={() => setModal({isOpen: true, type: 'addProject'})}
+                    userEmail={user.email}
+                />;
+    }
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 min-h-screen">
+            {/* Modals */}
+            <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
+            <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
+            
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
                     <div className="flex items-center justify-between">
@@ -658,9 +758,7 @@ const App = () => {
                                 <span className="sr-only">Open sidebar</span>
                                 <svg className="w-6 h-6" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path clipRule="evenodd" fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z"></path></svg>
                             </button>
-                            <button onClick={() => setView('dashboard')} className="flex ml-2 md:mr-24">
-                                <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap dark:text-white">Amigos</span>
-                            </button>
+                            <span className="self-center text-xl font-semibold sm:text-2xl whitespace-nowrap dark:text-white truncate">{selectedProject.name}</span>
                         </div>
                          <div className="flex items-center">
                             <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full" />
@@ -671,19 +769,24 @@ const App = () => {
             
             <aside className={`fixed top-0 left-0 z-30 w-64 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 flex flex-col">
-                    <button onClick={() => setView('dashboard')} className="flex items-center pl-2.5 mb-5 text-left">
-                        <span className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos</span>
-                    </button>
+                    <div className='pl-2.5 mb-5'>
+                        <h1 className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos</h1>
+                        <p className="text-sm text-blue-400 truncate">{selectedProject.name}</p>
+                    </div>
+
                     <ul className="space-y-2 flex-grow">
-                        <NavLink label="Dashboard" viewName="dashboard"/>
-                        <NavLink label="Transactions" viewName="transactions"/>
-                        <NavLink label="Invoices" viewName="invoices"/>
-                        <NavLink label="Balance Sheet" viewName="balance"/>
-                        <NavLink label="Investors" viewName="investors"/>
-                        <NavLink label="Payments" viewName="payments"/>
+                        <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
+                        <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
+                        <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
+                        <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
                     </ul>
                     <div className="mt-auto">
                          <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg mb-4">
+                            <button onClick={() => setSelectedProject(null)} className="w-full text-left flex items-center gap-2 hover:text-blue-500">
+                                <Icon path={ICONS.back} className="w-5 h-5" />
+                                <span className="text-sm font-semibold text-gray-900 dark:text-white">Switch Project</span>
+                            </button>
+                            <hr className='my-3 border-gray-300 dark:border-gray-600'/>
                             <div className="flex items-center">
                                 <img src={user.photoURL} alt="user" className="w-10 h-10 rounded-full" />
                                 <div className="ml-3">
@@ -709,5 +812,176 @@ const App = () => {
         </div>
     );
 };
+
+
+// --- Standalone Screens and Components ---
+
+const LoginScreen = ({ onSignIn }) => (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center text-center p-4">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 dark:text-white">Amigos</h1>
+        <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400 mb-8">Business Manager</p>
+        <p className="max-w-xl mb-8 text-gray-600 dark:text-gray-300">Your all-in-one solution for managing personal and business finances. Track income, expenses, invoices, and more, all in real-time.</p>
+        <Button onClick={onSignIn}>
+            <svg className="w-5 h-5 mr-2" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 64.5c-24.3-23.6-58.3-38.6-96.7-38.6-73.2 0-132.3 59.2-132.3 132.3s59.1 132.3 132.3 132.3c76.9 0 111.2-51.8 115.8-77.9H248v-62h236.4c.8 12.2 1.2 24.5 1.2 37.4z"></path></svg>
+            Sign in with Google
+        </Button>
+    </div>
+);
+
+const ProjectSelector = ({ projects, onSelectProject, onAddProject, userEmail }) => (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex justify-center items-center p-4">
+        <div className="w-full max-w-2xl">
+            <Card>
+                <h2 className="text-3xl font-bold text-center text-gray-800 dark:text-white mb-2">Select a Project</h2>
+                <p className="text-center text-gray-500 dark:text-gray-400 mb-8">Choose a project to work on, or create a new one.</p>
+                <div className="space-y-4 mb-8">
+                    {projects.map(p => (
+                        <button key={p.id} onClick={() => onSelectProject(p)} className="w-full text-left p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                            <h3 className="font-bold text-lg text-gray-900 dark:text-white">{p.name}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                {p.ownerEmail === userEmail ? "Owner" : `Shared by ${p.ownerEmail}`}
+                            </p>
+                        </button>
+                    ))}
+                </div>
+                 {projects.length === 0 && (
+                    <p className='text-center text-gray-500 dark:text-gray-400 py-8'>You have no projects yet. Create one to get started!</p>
+                )}
+                <div className="text-center">
+                    <Button onClick={onAddProject}>
+                        <Icon path={ICONS.plus} className="w-5 h-5" /> New Project
+                    </Button>
+                </div>
+            </Card>
+        </div>
+    </div>
+);
+
+const ProjectModal = ({ modal, setModal, onAddProject }) => {
+    const [projectName, setProjectName] = useState('');
+
+    if (modal.type !== 'addProject') return null;
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onAddProject(projectName);
+        setProjectName('');
+    }
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({ isOpen: false })} title="Add New Project">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Project Name" id="projectName" type="text" value={projectName} onChange={e => setProjectName(e.target.value)} required />
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({ isOpen: false })} variant="secondary" type="button">Cancel</Button>
+                    <Button type="submit">Create Project</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
+const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
+     const [projectToDelete, setProjectToDelete] = useState('');
+
+    if (modal.type !== 'limitReached') return null;
+    
+    const handleSubmit = () => {
+        const project = projects.find(p => p.id === projectToDelete);
+        if (project) {
+            handleDeleteProject(project);
+        } else {
+            alert("Please select a project to delete.");
+        }
+    }
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({ isOpen: false })} title="Project Limit Reached">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">You have reached the maximum of 5 projects. To add a new one, you must delete an existing project.</p>
+            <div className="space-y-4">
+                <Select label="Select Project to Delete" id="project-to-delete" value={projectToDelete} onChange={(e) => setProjectToDelete(e.target.value)}>
+                    <option value="">-- Please choose a project --</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({ isOpen: false })} variant="secondary" type="button">Cancel</Button>
+                    <Button onClick={handleSubmit} variant="danger" disabled={!projectToDelete}>Delete and Continue</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+const ProjectSettings = ({ project, onEditProject, onDeleteProject }) => {
+    const [name, setName] = useState(project.name);
+    const [contributorEmail, setContributorEmail] = useState('');
+    const [contributorRole, setContributorRole] = useState('read');
+
+    const handleNameSubmit = (e) => {
+        e.preventDefault();
+        onEditProject(project.id, name);
+    };
+    
+    const handleAddContributor = (e) => {
+        e.preventDefault();
+        alert('Contributor functionality coming soon!');
+        // In a real app, you would update the project document's 'contributors' map here.
+    }
+    
+    const handleDeleteData = () => {
+        alert('Deleting all project data is a highly destructive action. This feature should be implemented with extreme care, possibly using a Cloud Function for reliability.');
+    }
+
+    return (
+        <div className="space-y-8">
+            <Card>
+                <h3 className="text-xl font-bold mb-4">Edit Project Name</h3>
+                <form onSubmit={handleNameSubmit} className="flex gap-4 items-end">
+                    <div className='flex-grow'>
+                        <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
+                    </div>
+                    <Button type="submit">Save Name</Button>
+                </form>
+            </Card>
+            <Card>
+                 <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
+                 <form onSubmit={handleAddContributor} className="flex gap-4 items-end">
+                     <div className='flex-grow'>
+                        <Input label="Contributor Email" id="contributorEmail" type="email" value={contributorEmail} onChange={e => setContributorEmail(e.target.value)} />
+                     </div>
+                     <div className='flex-grow'>
+                        <Select label="Role" id="contributorRole" value={contributorRole} onChange={e => setContributorRole(e.target.value)}>
+                            <option value="read">Read-Only</option>
+                            <option value="read-write">Read & Write</option>
+                        </Select>
+                     </div>
+                    <Button type="submit">Add Contributor</Button>
+                 </form>
+            </Card>
+            <Card>
+                <h3 className="text-xl font-bold text-red-500 mb-4">Danger Zone</h3>
+                <div className="space-y-4">
+                     <Button onClick={handleDeleteData} variant="danger" className="w-full justify-start">
+                        Delete All Content in This Project
+                    </Button>
+                    <Button onClick={() => onDeleteProject(project)} variant="danger" className="w-full justify-start">
+                        Permanently Delete This Project
+                    </Button>
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+const NavLink = ({ label, viewName, currentView, setView, setIsSidebarOpen }) => (
+    <li>
+        <button
+           onClick={() => { setView(viewName); setIsSidebarOpen(false); }}
+           className={`flex items-center p-2 text-base font-normal rounded-lg transition-colors duration-200 w-full text-left ${currentView === viewName ? 'bg-blue-600 text-white' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+            <Icon path={ICONS[viewName]} className={`w-6 h-6 ${currentView === viewName ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} />
+            <span className="ml-3">{label}</span>
+        </button>
+    </li>
+);
 
 export default App;
