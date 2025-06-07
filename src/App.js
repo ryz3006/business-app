@@ -304,10 +304,10 @@ const Transactions = ({ user, transactions, setTransactions, categories, exportL
                     <Button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }}>
                         <Icon path={ICONS.plus} className="w-5 h-5"/> New Transaction
                     </Button>
-                    <Button onClick={exportToPDF} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : ""}>
+                    <Button onClick={exportToPDF} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : "Export to PDF"}>
                         <Icon path={ICONS.download} className="w-5 h-5"/> PDF
                     </Button>
-                    <Button onClick={exportToExcel} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : ""}>
+                    <Button onClick={exportToExcel} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : "Export to Excel"}>
                         <Icon path={ICONS.download} className="w-5 h-5"/> Excel
                     </Button>
                 </div>
@@ -710,4 +710,4 @@ const App = () => {
     );
 };
 
-export default A
+export default App;
