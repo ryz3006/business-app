@@ -984,4 +984,4 @@ const NavLink = ({ label, viewName, currentView, setView, setIsSidebarOpen }) =>
     </li>
 );
 
-export default A
+export default App;
