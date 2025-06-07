@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, collectionGroup } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, collectionGroup, getDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -725,20 +725,28 @@ const App = () => {
     }
 
     const handleRemoveContributor = async (project, email) => {
-        if (!user || project.ownerId !== user.uid) return;
+        if (!user || project.ownerId !== user.uid) {
+            alert("Only the project owner can remove contributors.");
+            return;
+        }
+        if (!window.confirm(`Are you sure you want to remove ${email} as a contributor?`)) {
+            return;
+        }
+
         const sanitizedEmail = email.replace(/\./g, '_');
         const projectRef = doc(db, `users/${user.uid}/projects/${project.id}`);
         try {
-             await updateDoc(projectRef, {
-                [`contributors.${sanitizedEmail}`]: delete_ // This needs to be `FieldValue.delete()` which is not available in v9 client like this. The workaround is to update the whole map.
-            });
-            // Firestore v9 does not have a direct `FieldValue.delete()` for nested maps.
-            // The robust way is to read the doc, modify the map in code, and write it back.
-            // For simplicity here, we'll just show the alert.
-            alert("To remove a contributor, you'd typically use a Cloud Function for reliability or manage the map object carefully on the client.");
-
+            const projectSnap = await getDoc(projectRef);
+            if (projectSnap.exists()) {
+                const updatedContributors = { ...projectSnap.data().contributors };
+                delete updatedContributors[sanitizedEmail];
+                await updateDoc(projectRef, {
+                    contributors: updatedContributors
+                });
+            }
         } catch(e) {
             console.error("Error removing contributor", e);
+            alert("Failed to remove contributor.");
         }
     }
 
