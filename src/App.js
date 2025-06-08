@@ -172,7 +172,7 @@ const Dashboard = ({ transactions, invoices, setView }) => {
                         <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
                            <div>
                                <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
-                               <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleDateString()}</p>
+                               <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleDateString()} by {t.user}</p>
                            </div>
                             <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                 {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
@@ -224,21 +224,25 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
     );
 };
 
-const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded }) => {
+const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded, userRole }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
 
+    const canWrite = userRole === 'owner' || userRole === 'read-write' || userRole === 'dashboard-transactions';
+
     const handleSave = async (data) => {
-        if (!user || !selectedProject) return;
+        if (!user || !selectedProject || !canWrite) return;
         try {
-            const path = `users/${user.uid}/projects/${selectedProject.id}/transactions`;
+            const path = `users/${selectedProject.ownerId}/projects/${selectedProject.id}/transactions`;
             if (editingTransaction) {
                 const docRef = doc(db, path, editingTransaction.id);
                 await updateDoc(docRef, data);
             } else {
                 await addDoc(collection(db, path), {
                     ...data,
+                    user: user.displayName,
+                    userEmail: user.email,
                     createdAt: new Date(),
                 });
             }
@@ -250,9 +254,9 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
     };
 
     const handleDelete = async (id) => {
-        if (!user || !selectedProject || !window.confirm('Are you sure you want to delete this transaction?')) return;
+        if (!user || !selectedProject || !canWrite || !window.confirm('Are you sure you want to delete this transaction?')) return;
         try {
-            const path = `users/${user.uid}/projects/${selectedProject.id}/transactions`;
+            const path = `users/${selectedProject.ownerId}/projects/${selectedProject.id}/transactions`;
             await deleteDoc(doc(db, path, id));
         } catch (error) {
             console.error("Error deleting transaction: ", error);
@@ -264,12 +268,12 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
         const doc = new jsPDF();
         doc.text(`Transactions for ${selectedProject.name}`, 14, 16);
         doc.autoTable({
-            head: [['Date', 'Description', 'Category', 'Type', 'Amount']],
+            head: [['Date', 'Description', 'Category', 'User', 'Amount']],
             body: transactions.map(t => [
                 new Date(t.date).toLocaleDateString(),
                 t.description,
                 t.category,
-                t.type,
+                t.user,
                 `₹${t.amount.toLocaleString('en-IN')}`
             ]),
         });
@@ -282,7 +286,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
             Date: new Date(t.date).toLocaleDateString(),
             Description: t.description,
             Category: t.category,
-            Type: t.type,
+            User: t.user,
             Amount: t.amount,
             Tags: t.tags?.join(', ')
         })));
@@ -302,7 +306,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
             <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Transactions</h2>
                 <div className="flex gap-2 flex-wrap justify-center">
-                    <Button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }}>
+                    <Button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} disabled={!canWrite}>
                         <Icon path={ICONS.plus} className="w-5 h-5"/> New Transaction
                     </Button>
                     <Button onClick={exportToPDF} variant="secondary" disabled={!exportLibsLoaded} title={!exportLibsLoaded ? "Export libraries are loading..." : "Export to PDF"}>
@@ -331,6 +335,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                         <tr>
                             <th scope="col" className="px-6 py-3">Date</th>
                             <th scope="col" className="px-6 py-3">Description</th>
+                            <th scope="col" className="px-6 py-3">User</th>
                             <th scope="col" className="px-6 py-3">Category</th>
                             <th scope="col" className="px-6 py-3">Amount</th>
                             <th scope="col" className="px-6 py-3">Actions</th>
@@ -341,13 +346,14 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                             <tr key={t.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <td className="px-6 py-4">{new Date(t.date).toLocaleDateString()}</td>
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{t.description}</td>
+                                <td className="px-6 py-4">{t.user}</td>
                                 <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">{t.category}</span></td>
                                 <td className={`px-6 py-4 font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                      {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
-                                    <button onClick={() => { setEditingTransaction(t); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700"><Icon path={ICONS.edit} /></button>
-                                    <button onClick={() => handleDelete(t.id)} className="text-red-500 hover:text-red-700"><Icon path={ICONS.delete} /></button>
+                                    <button onClick={() => { setEditingTransaction(t); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
+                                    <button onClick={() => handleDelete(t.id)} className="text-red-500 hover:text-red-700" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
                                 </td>
                             </tr>
                         ))}
@@ -395,25 +401,27 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     );
 };
 
-const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded }) => {
+const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded, userRole }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
+
+    const canWrite = userRole === 'owner' || userRole === 'read-write';
     
     const handleSave = async (data, pdfFile) => {
-        if (!user || !selectedProject) return;
+        if (!user || !selectedProject || !canWrite) return;
         try {
             let fileURL = editingInvoice?.fileURL || '';
             let filePath = editingInvoice?.filePath || '';
 
             if (pdfFile) {
-                const storageRef = ref(storage, `users/${user.uid}/projects/${selectedProject.id}/invoices/${Date.now()}_${pdfFile.name}`);
+                const storageRef = ref(storage, `users/${selectedProject.ownerId}/projects/${selectedProject.id}/invoices/${Date.now()}_${pdfFile.name}`);
                 const snapshot = await uploadBytes(storageRef, pdfFile);
                 fileURL = await getDownloadURL(snapshot.ref);
                 filePath = snapshot.ref.fullPath;
             }
             
-            const path = `users/${user.uid}/projects/${selectedProject.id}/invoices`;
-            const invoiceData = { ...data, fileURL, filePath };
+            const path = `users/${selectedProject.ownerId}/projects/${selectedProject.id}/invoices`;
+            const invoiceData = { ...data, fileURL, filePath, user: user.displayName, userEmail: user.email };
             
             if (editingInvoice) {
                 const docRef = doc(db, path, editingInvoice.id);
@@ -433,9 +441,9 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
     };
 
     const handleDelete = async (id) => {
-        if (!user || !selectedProject || !window.confirm('Are you sure? This will delete the invoice record.')) return;
+        if (!user || !selectedProject || !canWrite || !window.confirm('Are you sure? This will delete the invoice record.')) return;
         try {
-            const path = `users/${user.uid}/projects/${selectedProject.id}/invoices`;
+            const path = `users/${selectedProject.ownerId}/projects/${selectedProject.id}/invoices`;
             await deleteDoc(doc(db, path, id));
             // Note: This does not delete the file from storage to prevent accidental data loss.
         } catch (error) {
@@ -479,7 +487,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Invoices</h2>
-                <Button onClick={() => { setEditingInvoice(null); setIsModalOpen(true); }}>
+                <Button onClick={() => { setEditingInvoice(null); setIsModalOpen(true); }} disabled={!canWrite}>
                     <Icon path={ICONS.plus} className="w-5 h-5"/> New Invoice
                 </Button>
             </div>
@@ -509,8 +517,8 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
                                     <Icon path={ICONS.upload} className="w-5 h-5" /> View Bill
                                 </a>
                             )}
-                            <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700"><Icon path={ICONS.edit} /></button>
-                            <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700"><Icon path={ICONS.delete} /></button>
+                            <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
+                            <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
                         </div>
                     </Card>
                 ))}
@@ -534,6 +542,7 @@ const App = () => {
     const [sharedProjects, setSharedProjects] = useState([]);
     const [selectedProject, setSelectedProject] = useState(null);
     const [modal, setModal] = useState({ isOpen: false, type: '', data: null });
+    const [userRole, setUserRole] = useState(null);
 
     // Data states
     const [transactions, setTransactions] = useState([]);
@@ -587,7 +596,8 @@ const App = () => {
         });
 
         // Fetch shared projects
-        const sharedProjectsQuery = query(collectionGroup(db, 'projects'), where(`contributors.${user.email.replace(/\./g, '_')}`, 'in', ['read', 'read-write']));
+        const sanitizedEmail = user.email.replace(/\./g, '_');
+        const sharedProjectsQuery = query(collectionGroup(db, 'projects'), where(`contributors.${sanitizedEmail}`, 'in', ['read', 'read-write', 'dashboard-transactions']));
         const unsubscribeShared = onSnapshot(sharedProjectsQuery, (snapshot) => {
             const fetchedShared = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setSharedProjects(fetchedShared);
@@ -600,13 +610,23 @@ const App = () => {
         };
     }, [user]);
     
-    // Fetch data for the selected project
+    // Fetch data for the selected project and determine user role
     useEffect(() => {
         if (!user || !selectedProject) {
             setTransactions([]);
             setInvoices([]);
+            setUserRole(null);
             return;
         };
+
+        // Determine user role for the selected project
+        if (selectedProject.ownerId === user.uid) {
+            setUserRole('owner');
+        } else {
+            const sanitizedEmail = user.email.replace(/\./g, '_');
+            const role = selectedProject.contributors[sanitizedEmail];
+            setUserRole(role || null);
+        }
 
         const projectPath = `users/${selectedProject.ownerId}/projects/${selectedProject.id}`;
 
@@ -756,11 +776,11 @@ const App = () => {
             case 'dashboard':
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
             case 'transactions':
-                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded}/>;
+                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded} userRole={userRole}/>;
             case 'invoices':
-                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} />;
+                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddContributor} onRemoveContributor={handleRemoveContributor} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -824,7 +844,7 @@ const App = () => {
                         <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
                         <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
                         <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
-                        <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
+                        {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
                          <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-lg mb-4">
@@ -967,7 +987,7 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
     );
 }
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [contributorRole, setContributorRole] = useState('read');
@@ -991,6 +1011,10 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         alert('Deleting all project data is a highly destructive action. This feature should be implemented with extreme care, possibly using a Cloud Function for reliability.');
     }
 
+    if(userRole !== 'owner') {
+        return <Card><p>You do not have permission to view project settings.</p></Card>
+    }
+
     return (
         <div className="space-y-8">
             <Card>
@@ -1012,19 +1036,38 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                         <Select label="Role" id="contributorRole" value={contributorRole} onChange={e => setContributorRole(e.target.value)}>
                             <option value="read">Read-Only</option>
                             <option value="read-write">Read & Write</option>
+                            <option value="dashboard-transactions">Dashboard & Transactions</option>
                         </Select>
                      </div>
                     <Button type="submit">Add Contributor</Button>
                  </form>
                  <div className="space-y-2">
                      <h4 className="text-lg font-semibold">Current Contributors</h4>
-                     <p className="text-sm text-gray-500">{project.ownerEmail} (Owner)</p>
-                     {project.contributors && Object.entries(project.contributors).map(([email, role]) => (
-                         <div key={email} className="flex justify-between items-center">
-                             <p className="text-sm">{email.replace(/_/g, '.')} - <span className="font-semibold">{role}</span></p>
-                             <button onClick={() => onRemoveContributor(project, email.replace(/_/g, '.'))} className="text-red-500 hover:text-red-700 text-sm">Remove</button>
-                         </div>
-                     ))}
+                     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                         <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                             <tr>
+                                 <th scope="col" className="px-6 py-3">Email</th>
+                                 <th scope="col" className="px-6 py-3">Role</th>
+                                 <th scope="col" className="px-6 py-3">Action</th>
+                             </tr>
+                         </thead>
+                         <tbody>
+                            <tr className="bg-white dark:bg-gray-800">
+                                <td className="px-6 py-4">{project.ownerEmail}</td>
+                                <td className="px-6 py-4">Owner</td>
+                                <td className="px-6 py-4"></td>
+                            </tr>
+                            {project.contributors && Object.entries(project.contributors).map(([email, role]) => (
+                                <tr key={email} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+                                    <td className="px-6 py-4">{email.replace(/_/g, '.')}</td>
+                                    <td className="px-6 py-4">{role}</td>
+                                    <td className="px-6 py-4">
+                                        <button onClick={() => onRemoveContributor(project, email.replace(/_/g, '.'))} className="text-red-500 hover:text-red-700 text-sm">Remove</button>
+                                    </td>
+                                </tr>
+                             ))}
+                         </tbody>
+                     </table>
                  </div>
             </Card>
             <Card>
