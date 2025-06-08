@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as Recharts from 'recharts';
 
 // --- Helper Functions & Configuration ---
@@ -22,7 +21,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // --- SVG Icons ---
 
@@ -1454,7 +1452,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, setDefaultCurrency] = useState('₹');
+    const [defaultCurrency, ] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
 
 
