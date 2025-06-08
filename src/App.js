@@ -1044,6 +1044,10 @@ const App = () => {
                 userEmail: user.email,
                 createdAt: new Date(),
             });
+
+            const invoiceRef = doc(db, `projects/${selectedProject.id}/invoices/${invoice.id}`);
+            await updateDoc(invoiceRef, { incomeRecorded: true });
+
             showToast("Income transaction created for bill payment!");
         } catch (error) {
             console.error("Error creating transaction from bill:", error);
@@ -1098,7 +1102,7 @@ const App = () => {
             <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
             <EditContributorModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleAddOrUpdateContributor} />
-            <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} />
+            <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} userRole={userRole} />
             <EditProjectSettingsModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleEditProjectSettings} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
@@ -1346,11 +1350,13 @@ const EditContributorModal = ({ modal, setModal, project, onSave }) => {
     );
 };
 
-const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddTransaction }) => {
+const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddTransaction, userRole }) => {
     const { data: invoice } = modal;
     const [status, setStatus] = useState(invoice?.status || 'pending');
-    const [addAsIncome, setAddAsIncome] = useState(true);
+    const [addAsIncome, setAddAsIncome] = useState(!invoice?.incomeRecorded);
     const [isProcessing, setIsProcessing] = useState(false);
+    
+    const canWrite = userRole === 'owner' || userRole?.write?.includes('invoices');
 
     if (modal.type !== 'generateBill') return null;
 
@@ -1412,19 +1418,21 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
         const docType = status === 'paid' ? 'bill' : 'invoice';
         generatePDF(invoice, docType);
 
-        if (status !== invoice.status) {
-            const invoiceRef = doc(db, `projects/${project.id}/invoices/${invoice.id}`);
-            try {
-                await updateDoc(invoiceRef, { status });
-                showToast("Invoice status updated!");
-            } catch (error) {
-                showToast("Failed to update invoice status.", "error");
+        if (canWrite) {
+            if (status !== invoice.status) {
+                const invoiceRef = doc(db, `projects/${project.id}/invoices/${invoice.id}`);
+                try {
+                    await updateDoc(invoiceRef, { status });
+                    showToast("Invoice status updated!");
+                } catch (error) {
+                    showToast("Failed to update invoice status.", "error");
+                }
             }
-        }
 
-        if (addAsIncome) {
-            const totalAmount = invoice.amount + (invoice.amount * (invoice.tax || 0)) / 100;
-            await onAddTransaction(invoice, totalAmount);
+            if (addAsIncome && !invoice.incomeRecorded) {
+                const totalAmount = invoice.amount + (invoice.amount * (invoice.tax || 0)) / 100;
+                await onAddTransaction(invoice, totalAmount);
+            }
         }
         
         setIsProcessing(false);
@@ -1435,7 +1443,7 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
         <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title={`Generate Document for INV-${invoice.invoiceNumber}`}>
             <div className="space-y-4">
                 <div>
-                    <Select label="Update Invoice Status" id="invoiceStatus" value={status} onChange={e => setStatus(e.target.value)}>
+                    <Select label="Update Invoice Status" id="invoiceStatus" value={status} onChange={e => setStatus(e.target.value)} disabled={!canWrite}>
                         <option value="pending">Pending</option>
                          <option value="overdue">Overdue</option>
                         <option value="paid">Paid</option>
@@ -1443,8 +1451,9 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
                 </div>
                 <div>
                     <label className='flex items-center gap-2'>
-                        <input type="checkbox" checked={addAsIncome} onChange={e => setAddAsIncome(e.target.checked)} />
+                        <input type="checkbox" checked={addAsIncome} onChange={e => setAddAsIncome(e.target.checked)} disabled={!canWrite || invoice.incomeRecorded} />
                         <span>Add payment to transactions as Income</span>
+                         {invoice.incomeRecorded && <span className="text-xs text-gray-500">(Already recorded)</span>}
                     </label>
                 </div>
                 <div className="flex justify-end gap-4 pt-4">
@@ -1461,7 +1470,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, ] = useState('₹');
+    const [defaultCurrency] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -1499,7 +1508,6 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
         </Modal>
     );
 };
-
 
 const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
     const [contributorEmail, setContributorEmail] = useState('');
@@ -1553,6 +1561,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         <div className="space-y-8">
             <Card>
                 <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
+                <p className="text-sm text-gray-500 mb-4">Estimated Data Usage: ~{(new Blob([JSON.stringify(project)]).size / 1024).toFixed(2)} KB (Note: this is a client-side estimate and does not reflect actual database size)</p>
                 <Button onClick={() => setModal({isOpen: true, type: 'editProjectSettings'})} variant='primary'>Edit Settings</Button>
             </Card>
             <Card>
