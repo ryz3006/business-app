@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, collectionGroup, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -596,10 +596,17 @@ const App = () => {
         });
 
         // Fetch shared projects
-        const sanitizedEmail = user.email.replace(/\./g, '_');
-        const sharedProjectsQuery = query(collectionGroup(db, 'projects'), where(`contributors.${sanitizedEmail}`, 'in', ['read', 'read-write', 'dashboard-transactions']));
-        const unsubscribeShared = onSnapshot(sharedProjectsQuery, (snapshot) => {
-            const fetchedShared = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const sharedProjectsQuery = query(collection(db, "projectShares"), where("contributorEmail", "==", user.email));
+        const unsubscribeShared = onSnapshot(sharedProjectsQuery, async (snapshot) => {
+            const projectPromises = snapshot.docs.map(shareDoc => {
+                const { ownerId, projectId } = shareDoc.data();
+                return getDoc(doc(db, `users/${ownerId}/projects/${projectId}`));
+            });
+            const projectDocs = await Promise.all(projectPromises);
+            const fetchedShared = projectDocs
+                .filter(doc => doc.exists())
+                .map(doc => ({ id: doc.id, ...doc.data() }));
+
             setSharedProjects(fetchedShared);
         });
 
@@ -617,11 +624,12 @@ const App = () => {
         const projectRef = doc(db, `users/${selectedProject.ownerId}/projects/${selectedProject.id}`);
         const unsubscribe = onSnapshot(projectRef, (doc) => {
             if (doc.exists()) {
-                setSelectedProject(prev => ({ ...prev, ...doc.data() }));
+                 setSelectedProject(prev => ({...prev, ...doc.data()}));
             }
         });
 
         return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedProject?.id, selectedProject?.ownerId]);
 
 
@@ -723,23 +731,29 @@ const App = () => {
         if (!window.confirm(`Are you sure you want to permanently delete the project "${projectToDelete.name}" and all its data? This cannot be undone.`)) return;
 
         try {
-            // This is a simplified deletion. For a production app, use a Cloud Function for robust cascading deletes.
             const projectRef = doc(db, `users/${user.uid}/projects/${projectToDelete.id}`);
-            // Delete subcollections (simplified for now)
+            const batch = writeBatch(db);
+
+            // Delete subcollections
             const transactionsRef = collection(projectRef, 'transactions');
             const invoicesRef = collection(projectRef, 'invoices');
             const transSnap = await getDocs(transactionsRef);
             const invSnap = await getDocs(invoicesRef);
-            const batch = writeBatch(db);
             transSnap.forEach(doc => batch.delete(doc.ref));
             invSnap.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
+            
+            // Delete associated project shares
+            const sharesQuery = query(collection(db, "projectShares"), where("projectId", "==", projectToDelete.id), where("ownerId", "==", user.uid));
+            const sharesSnap = await getDocs(sharesQuery);
+            sharesSnap.forEach(doc => batch.delete(doc.ref));
 
             // Delete the project document itself
-            await deleteDoc(projectRef);
+            batch.delete(projectRef);
 
-            setSelectedProject(null); // Deselect project
-            setModal({ isOpen: false }); // Close any open modals
+            await batch.commit();
+
+            setSelectedProject(null);
+            setModal({ isOpen: false });
 
         } catch (error) {
             console.error("Error deleting project:", error);
@@ -748,12 +762,24 @@ const App = () => {
 
     const handleAddContributor = async (project, email, role) => {
         if (!user || project.ownerId !== user.uid) return;
+        
+        const batch = writeBatch(db);
         const sanitizedEmail = email.replace(/\./g, '_');
         const projectRef = doc(db, `users/${user.uid}/projects/${project.id}`);
+        batch.update(projectRef, {
+            [`contributors.${sanitizedEmail}`]: role
+        });
+
+        const shareRef = doc(collection(db, "projectShares"));
+        batch.set(shareRef, {
+            projectId: project.id,
+            ownerId: user.uid,
+            contributorEmail: email,
+            role: role
+        });
+
         try {
-            await updateDoc(projectRef, {
-                [`contributors.${sanitizedEmail}`]: role
-            });
+            await batch.commit();
         } catch (error) {
             console.error("Error adding contributor:", error);
         }
@@ -761,12 +787,21 @@ const App = () => {
 
     const handleUpdateContributorRole = async (project, email, role) => {
         if (!user || project.ownerId !== user.uid) return;
+        
+        const batch = writeBatch(db);
         const sanitizedEmail = email.replace(/\./g, '_');
         const projectRef = doc(db, `users/${user.uid}/projects/${project.id}`);
+        batch.update(projectRef, {
+            [`contributors.${sanitizedEmail}`]: role
+        });
+        
+        const sharesQuery = query(collection(db, "projectShares"), where("projectId", "==", project.id), where("contributorEmail", "==", email));
         try {
-            await updateDoc(projectRef, {
-                [`contributors.${sanitizedEmail}`]: role
+            const sharesSnap = await getDocs(sharesQuery);
+            sharesSnap.forEach(shareDoc => {
+                batch.update(shareDoc.ref, { role: role });
             });
+            await batch.commit();
         } catch (error) {
             console.error("Error updating contributor role:", error);
         }
@@ -781,17 +816,30 @@ const App = () => {
             return;
         }
 
+        const batch = writeBatch(db);
         const sanitizedEmail = email.replace(/\./g, '_');
         const projectRef = doc(db, `users/${user.uid}/projects/${project.id}`);
+        
+        const sharesQuery = query(collection(db, "projectShares"), where("projectId", "==", project.id), where("contributorEmail", "==", email));
+        
         try {
+            // Remove from shares collection
+            const sharesSnap = await getDocs(sharesQuery);
+            sharesSnap.forEach(shareDoc => {
+                batch.delete(shareDoc.ref);
+            });
+
+            // Remove from contributors map
             const projectSnap = await getDoc(projectRef);
             if (projectSnap.exists()) {
                 const updatedContributors = { ...projectSnap.data().contributors };
                 delete updatedContributors[sanitizedEmail];
-                await updateDoc(projectRef, {
+                batch.update(projectRef, {
                     contributors: updatedContributors
                 });
             }
+
+            await batch.commit();
         } catch(e) {
             console.error("Error removing contributor", e);
             alert("Failed to remove contributor.");
