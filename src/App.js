@@ -1338,6 +1338,111 @@ const EditContributorModal = ({ modal, setModal, project, onSave }) => {
     );
 };
 
+const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddTransaction }) => {
+    const { data: invoice } = modal;
+    const [status, setStatus] = useState(invoice?.status || 'pending');
+    const [addAsIncome, setAddAsIncome] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    if (modal.type !== 'generateBill') return null;
+
+    const generateBillPDF = (invoice) => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        const companyName = project.companyName || "Your Company";
+        const currency = project.defaultCurrency || '₹';
+        const companyContact = `${project.companyContactMail || ''} ${project.companyContactNumber || ''}`.trim();
+
+        doc.setFontSize(22);
+        doc.text("Bill", 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(companyName, 14, 30);
+        
+        doc.text(`Bill For: ${invoice.clientName}`, 14, 45);
+        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 140, 45);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 52);
+
+        const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
+        const totalAmount = invoice.amount + taxAmount;
+
+        doc.autoTable({
+            startY: 60,
+            head: [['Description', 'Amount']],
+            body: [
+                [invoice.serviceDetails || 'Service/Product', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
+                [`Tax (${invoice.tax || 0}%)`, `${currency}${taxAmount.toLocaleString('en-IN')}`],
+            ],
+            foot: [
+                [{ content: 'Total Amount Due', styles: { fontStyle: 'bold' } }, { content: `${currency}${totalAmount.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+            ]
+        });
+
+        let finalY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(10);
+        doc.text("Payment Details:", 14, finalY);
+        doc.text(project.paymentMethods || 'N/A', 14, finalY + 7);
+
+        finalY = doc.lastAutoTable.finalY + 30;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`This is an electronically generated invoice on behalf of '${project.name}' by '${companyName}', so no need to sign separately.`, 14, finalY + 15);
+        if (companyContact) {
+            doc.text(`Any concerns please connect ${companyContact}`, 14, finalY + 20);
+        }
+        
+        doc.save(`Bill-${invoice.invoiceNumber}.pdf`);
+    };
+
+    const handleProcess = async () => {
+        setIsProcessing(true);
+
+        generateBillPDF(invoice);
+
+        if (status !== invoice.status) {
+            const invoiceRef = doc(db, `projects/${project.id}/invoices/${invoice.id}`);
+            try {
+                await updateDoc(invoiceRef, { status });
+                showToast("Invoice status updated!");
+            } catch (error) {
+                showToast("Failed to update invoice status.", "error");
+            }
+        }
+
+        if (addAsIncome) {
+            const totalAmount = invoice.amount + (invoice.amount * (invoice.tax || 0)) / 100;
+            await onAddTransaction(invoice, totalAmount);
+        }
+        
+        setIsProcessing(false);
+        setModal({ isOpen: false });
+    };
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title={`Generate Bill for INV-${invoice.invoiceNumber}`}>
+            <div className="space-y-4">
+                <div>
+                    <Select label="Update Invoice Status" id="invoiceStatus" value={status} onChange={e => setStatus(e.target.value)}>
+                        <option value="pending">Pending</option>
+                        <option value="paid">Paid</option>
+                        <option value="overdue">Overdue</option>
+                    </Select>
+                </div>
+                <div>
+                    <label className='flex items-center gap-2'>
+                        <input type="checkbox" checked={addAsIncome} onChange={e => setAddAsIncome(e.target.checked)} />
+                        <span>Add payment to transactions as Income</span>
+                    </label>
+                </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({isOpen: false})} variant="secondary">Cancel</Button>
+                    <Button onClick={handleProcess} isLoading={isProcessing}>Generate & Save</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
     const [name, setName] = useState(project.name);
@@ -1349,7 +1454,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, setDefaultCurrency] = useState(project.defaultCurrency || '₹');
+    const [defaultCurrency, setDefaultCurrency] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
 
 
@@ -1419,7 +1524,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                     <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
                     <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
                     <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
-                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} onChange={e => setDefaultCurrency(e.target.value)} placeholder="e.g., $, €, ₹"/>
+                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} disabled readOnly />
                     <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
                     <Button type="submit" isLoading={isSavingName}>Save Settings</Button>
                 </form>
