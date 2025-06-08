@@ -229,7 +229,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
 
-    const canWrite = userRole?.write?.includes('transactions');
+    const canWrite = userRole === 'owner' || userRole?.write?.includes('transactions');
 
     const handleSave = async (data) => {
         if (!user || !selectedProject || !canWrite) return;
@@ -405,7 +405,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
 
-    const canWrite = userRole?.write?.includes('invoices');
+    const canWrite = userRole === 'owner' || userRole?.write?.includes('invoices');
     
     const handleSave = async (data, pdfFile) => {
         if (!user || !selectedProject || !canWrite) return;
@@ -625,7 +625,6 @@ const App = () => {
         });
 
         return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedProject?.id]);
 
 
@@ -640,7 +639,7 @@ const App = () => {
 
         // Determine user role for the selected project
         if (selectedProject.ownerId === user.uid) {
-            setUserRole({ read: ['dashboard', 'transactions', 'invoices'], write: ['dashboard', 'transactions', 'invoices'] });
+            setUserRole('owner');
         } else {
             const sanitizedEmail = user.email.replace(/\./g, '_');
             const role = selectedProject.contributors[sanitizedEmail];
@@ -875,9 +874,9 @@ const App = () => {
                     </div>
 
                     <ul className="space-y-2 flex-grow">
-                        {userRole?.read?.includes('dashboard') && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {userRole?.read?.includes('transactions') && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {userRole?.read?.includes('invoices') && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole === 'owner' || userRole?.read?.includes('dashboard')) && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole === 'owner' || userRole?.read?.includes('transactions')) && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole === 'owner' || userRole?.read?.includes('invoices')) && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
@@ -1021,7 +1020,7 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
     );
 }
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, onUpdateContributorRole, userRole }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [permissions, setPermissions] = useState({ read: [], write: [] });
@@ -1034,7 +1033,11 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                 if (type === 'write') newPerms.add(page); // Write implies read
             } else {
                 newPerms.delete(page);
-                 if (type === 'read') newPerms.delete(page); // No read implies no write
+                 if (type === 'read' && page !== 'dashboard') { // Cannot un-read a page if you have write access to it
+                     const writePerms = new Set(prev.write);
+                     writePerms.delete(page);
+                     return { ...prev, read: Array.from(newPerms), write: Array.from(writePerms) };
+                 }
             }
             return { ...prev, [type]: Array.from(newPerms) };
         });
@@ -1060,7 +1063,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         alert('Deleting all project data is a highly destructive action. This feature should be implemented with extreme care, possibly using a Cloud Function for reliability.');
     }
 
-    if(userRole?.read?.length === 0) {
+    if(userRole !== 'owner') {
         return <Card><p>You do not have permission to view project settings.</p></Card>
     }
 
