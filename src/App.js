@@ -177,6 +177,17 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
         return Object.values(flow).sort((a, b) => new Date(a.date) - new Date(b.date));
     }, [filteredTransactions]);
 
+    const expenseByCategory = useMemo(() => {
+        const categoryMap = {};
+        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
+            const category = t.category || 'Uncategorized';
+            categoryMap[category] = (categoryMap[category] || 0) + t.amount;
+        });
+        return Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
+    }, [filteredTransactions]);
+
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
+
     const handlePresetChange = (e) => {
         const value = e.target.value;
         const today = new Date();
@@ -276,6 +287,40 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
                     </Recharts.LineChart>
                 </Recharts.ResponsiveContainer>
             </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Expense Breakdown</h3>
+                    <Recharts.ResponsiveContainer width="100%" height={300}>
+                        <Recharts.PieChart>
+                            <Recharts.Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
+                                {expenseByCategory.map((entry, index) => (
+                                    <Recharts.Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Recharts.Pie>
+                            <Recharts.Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />
+                            <Recharts.Legend />
+                        </Recharts.PieChart>
+                    </Recharts.ResponsiveContainer>
+                </Card>
+
+                <Card>
+                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Recent Transactions</h3>
+                     <div className="space-y-3 max-h-72 overflow-y-auto">
+                        {transactions.slice(0, 10).map(t => (
+                            <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
+                               <div>
+                                   <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
+                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleDateString()} by {t.user}</p>
+                               </div>
+                                <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                                    {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
+                                </p>
+                            </div>
+                        ))}
+                     </div>
+                </Card>
+            </div>
         </div>
     );
 };
