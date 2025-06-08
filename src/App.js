@@ -777,7 +777,7 @@ const App = () => {
     const [modal, setModal] = useState({ isOpen: false, type: '', data: null });
     const [userRole, setUserRole] = useState(null);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-    const [isDarkMode, setDarkMode] = useState(false);
+    const [isDarkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true');
 
     // Data states
     const [transactions, setTransactions] = useState([]);
@@ -806,6 +806,16 @@ const App = () => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast({ show: false, message: '', type }), 3000);
     };
+
+    // Dark Mode Effect
+    useEffect(() => {
+        if(isDarkMode) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        localStorage.setItem('darkMode', isDarkMode);
+    }, [isDarkMode]);
 
     // Check if the external export libraries have loaded
     useEffect(() => {
@@ -1152,9 +1162,14 @@ const App = () => {
 
     if (!user) {
         return (
-            <div className="relative min-h-screen">
+            <div className={`relative min-h-screen ${isDarkMode ? 'dark' : ''}`}>
                 <LoginScreen onSignIn={handleGoogleSignIn} />
-                <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="absolute bottom-4 right-4 text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                 <div className="absolute bottom-4 right-4 flex gap-4">
+                    <button onClick={() => setDarkMode(!isDarkMode)} className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                        <Icon path={isDarkMode ? ICONS.sun : ICONS.moon} />
+                    </button>
+                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline self-center">Privacy Policy</button>
+                 </div>
                 <PrivacyPolicyModal modal={modal} setModal={setModal} />
             </div>
         );
@@ -1162,7 +1177,7 @@ const App = () => {
     
     if (!selectedProject) {
         return (
-            <div>
+            <div className={`relative min-h-screen ${isDarkMode ? 'dark' : ''}`}>
                 <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
                 <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
                 <ProjectSelector 
@@ -1172,8 +1187,11 @@ const App = () => {
                     onAddProject={() => setModal({isOpen: true, type: 'addProject'})}
                     onSignOut={handleSignOut}
                 />
-                 <div className="absolute bottom-4 w-full text-center">
-                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                 <div className="absolute bottom-4 right-4 flex gap-4">
+                    <button onClick={() => setDarkMode(!isDarkMode)} className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                        <Icon path={isDarkMode ? ICONS.sun : ICONS.moon} />
+                    </button>
+                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline self-center">Privacy Policy</button>
                  </div>
                 <PrivacyPolicyModal modal={modal} setModal={setModal} />
             </div>
@@ -1181,7 +1199,7 @@ const App = () => {
     }
 
     return (
-        <div className="bg-gray-100 dark:bg-gray-900 min-h-screen">
+        <div className={`bg-gray-100 dark:bg-gray-900 min-h-screen ${isDarkMode ? 'dark' : ''}`}>
             <Toast {...toast} />
             <LoadingOverlay isVisible={isProcessing} />
             {/* Modals */}
@@ -1602,7 +1620,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
     
     const handleAddContributorClick = () => {
         setModal({ isOpen: true, type: 'addContributor', data: project });
