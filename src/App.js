@@ -1148,12 +1148,18 @@ const App = () => {
     }
 
     if (!user) {
-        return <LoginScreen onSignIn={handleGoogleSignIn} />;
+        return (
+            <div className="relative min-h-screen">
+                <LoginScreen onSignIn={handleGoogleSignIn} />
+                <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="absolute bottom-4 right-4 text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                <PrivacyPolicyModal modal={modal} setModal={setModal} />
+            </div>
+        );
     }
     
     if (!selectedProject) {
         return (
-            <div>
+            <div className='relative min-h-screen'>
                 <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
                 <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
                 <ProjectSelector 
@@ -1163,6 +1169,10 @@ const App = () => {
                     onAddProject={() => setModal({isOpen: true, type: 'addProject'})}
                     onSignOut={handleSignOut}
                 />
+                 <div className="absolute bottom-4 w-full text-center">
+                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                 </div>
+                <PrivacyPolicyModal modal={modal} setModal={setModal} />
             </div>
         );
     }
@@ -1177,6 +1187,7 @@ const App = () => {
             <EditContributorModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleAddOrUpdateContributor} />
             <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} userRole={userRole} />
             <EditProjectSettingsModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleEditProjectSettings} />
+            <PrivacyPolicyModal modal={modal} setModal={setModal} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
@@ -1236,6 +1247,9 @@ const App = () => {
                 <div className="p-4 rounded-lg">
                     {renderView()}
                 </div>
+                 <div className="text-center mt-8">
+                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                 </div>
             </main>
         </div>
     );
@@ -1246,8 +1260,7 @@ const App = () => {
 
 const LoginScreen = ({ onSignIn }) => (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col justify-center items-center text-center p-4">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 dark:text-white">Amigos</h1>
-        <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400 mb-8">Business Manager</p>
+        <BrandingHeader/>
         <p className="max-w-xl mb-8 text-gray-600 dark:text-gray-300">Your all-in-one solution for managing personal and business finances. Track income, expenses, invoices, and more, all in real-time.</p>
         <Button onClick={onSignIn}>
             <svg className="w-5 h-5 mr-2" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 64.5c-24.3-23.6-58.3-38.6-96.7-38.6-73.2 0-132.3 59.2-132.3 132.3s59.1 132.3 132.3 132.3c76.9 0 111.2-51.8 115.8-77.9H248v-62h236.4c.8 12.2 1.2 24.5 1.2 37.4z"></path></svg>
@@ -1261,10 +1274,7 @@ const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSign
         <div className="w-full max-w-2xl">
             <Card>
                  <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-4xl font-bold text-gray-800 dark:text-white">Amigos</h1>
-                        <p className="text-xl font-light text-blue-600 dark:text-blue-400">Business Manager</p>
-                    </div>
+                    <BrandingHeader />
                     <div className="flex items-center gap-3">
                          <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full" />
                          <Button onClick={onSignOut} variant="secondary">Sign Out</Button>
@@ -1291,6 +1301,13 @@ const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSign
                 </div>
             </Card>
         </div>
+    </div>
+);
+
+const BrandingHeader = () => (
+    <div className='text-center mb-6'>
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 dark:text-white">Amigos</h1>
+        <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400">Business Manager</p>
     </div>
 );
 
@@ -1582,46 +1599,12 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
-    const [contributorEmail, setContributorEmail] = useState('');
-    const [permissions, setPermissions] = useState({ read: [], write: [] });
-    const [isAddingContributor, setIsAddingContributor] = useState(false);
+const ProjectSettings = ({ project, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
     
-    const handlePermissionChange = (type, page, checked) => {
-        setPermissions(prev => {
-            const currentPerms = new Set(prev[type]);
-            if (checked) {
-                currentPerms.add(page);
-                if (type === 'write' && !prev.read.includes(page)) {
-                    const readPerms = new Set(prev.read);
-                    readPerms.add(page);
-                    return { ...prev, read: Array.from(readPerms), write: Array.from(currentPerms) };
-                }
-            } else {
-                currentPerms.delete(page);
-                if (type === 'read' && prev.write.includes(page)) {
-                    const writePerms = new Set(prev.write);
-                    writePerms.delete(page);
-                    return { ...prev, read: Array.from(currentPerms), write: Array.from(writePerms) };
-                }
-            }
-            return { ...prev, [type]: Array.from(currentPerms) };
-        });
-    };
-    
-    const handleAddContributor = async (e) => {
-        e.preventDefault();
-        if (!contributorEmail) {
-            alert("Please enter a contributor's email.");
-            return;
-        }
-        setIsAddingContributor(true);
-        await onAddContributor(project, contributorEmail, permissions);
-        setIsAddingContributor(false);
-        setContributorEmail('');
-        setPermissions({ read: [], write: [] });
+    const handleAddContributorClick = () => {
+        setModal({ isOpen: true, type: 'addContributor', data: project });
     }
-
+    
     if(userRole !== 'owner') {
         return <Card><p>You do not have permission to view project settings.</p></Card>
     }
@@ -1635,27 +1618,6 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProj
             </Card>
             <Card>
                  <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
-                 <form onSubmit={handleAddContributor} className="space-y-4 mb-6 border-b pb-6 dark:border-gray-700">
-                     <Input label="New Contributor Email" id="contributorEmail" type="email" value={contributorEmail} onChange={e => setContributorEmail(e.target.value)} required />
-                     <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <h4 className='font-semibold mb-2'>Read Access</h4>
-                            <div className='space-y-2'>
-                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'dashboard', e.target.checked)} checked={permissions.read.includes('dashboard')}/> Dashboard</label>
-                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'transactions', e.target.checked)} checked={permissions.read.includes('transactions')}/> Transactions</label>
-                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'invoices', e.target.checked)} checked={permissions.read.includes('invoices')}/> Invoices</label>
-                            </div>
-                        </div>
-                         <div>
-                            <h4 className='font-semibold mb-2'>Write Access</h4>
-                            <div className='space-y-2'>
-                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'transactions', e.target.checked)} checked={permissions.write.includes('transactions')}/> Transactions</label>
-                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'invoices', e.target.checked)} checked={permissions.write.includes('invoices')}/> Invoices</label>
-                            </div>
-                        </div>
-                     </div>
-                    <Button type="submit" isLoading={isAddingContributor}>Add Contributor</Button>
-                 </form>
                  <div className="space-y-2">
                      <h4 className="text-lg font-semibold">Current Contributors</h4>
                      <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
@@ -1689,22 +1651,113 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProj
                              ))}
                          </tbody>
                      </table>
+                      <Button onClick={handleAddContributorClick} className="mt-4">
+                        <Icon path={ICONS.plus}/> Add Contributor
+                     </Button>
                  </div>
             </Card>
             <Card>
                 <h3 className="text-xl font-bold text-red-500 mb-4">Danger Zone</h3>
                 <div className="space-y-4">
                      <Button onClick={() => onDeleteProjectContent(project)} variant="danger" className="w-full justify-start">
-                        Delete All Content in This Project
+                        <Icon path={ICONS.delete} /> Delete All Content in This Project
                     </Button>
                     <Button onClick={() => onDeleteProject(project)} variant="danger" className="w-full justify-start">
-                        Permanently Delete This Project
+                        <Icon path={ICONS.delete} /> Permanently Delete This Project
                     </Button>
                 </div>
             </Card>
         </div>
     );
 };
+
+const AddContributorModal = ({ modal, setModal, onAddContributor, project }) => {
+    const [contributorEmail, setContributorEmail] = useState('');
+    const [permissions, setPermissions] = useState({ read: [], write: [] });
+    const [isSaving, setIsSaving] = useState(false);
+
+    if (modal.type !== 'addContributor') return null;
+
+    const handlePermissionChange = (type, page, checked) => {
+        setPermissions(prev => {
+            const currentPerms = new Set(prev[type]);
+            if (checked) {
+                currentPerms.add(page);
+                if (type === 'write' && !prev.read.includes(page)) {
+                    const readPerms = new Set(prev.read);
+                    readPerms.add(page);
+                    return { ...prev, read: Array.from(readPerms), write: Array.from(currentPerms) };
+                }
+            } else {
+                currentPerms.delete(page);
+                if (type === 'read' && prev.write.includes(page)) {
+                    const writePerms = new Set(prev.write);
+                    writePerms.delete(page);
+                    return { ...prev, read: Array.from(currentPerms), write: Array.from(writePerms) };
+                }
+            }
+            return { ...prev, [type]: Array.from(currentPerms) };
+        });
+    };
+    
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!contributorEmail) {
+            alert("Please enter a contributor's email.");
+            return;
+        }
+        setIsSaving(true);
+        await onAddContributor(project, contributorEmail, permissions);
+        setIsSaving(false);
+        setContributorEmail('');
+        setPermissions({ read: [], write: [] });
+        setModal({isOpen: false});
+    }
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title="Add New Contributor">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                 <Input label="New Contributor Email" id="contributorEmail" type="email" value={contributorEmail} onChange={e => setContributorEmail(e.target.value)} required />
+                 <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <h4 className='font-semibold mb-2'>Read Access</h4>
+                        <div className='space-y-2'>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'dashboard', e.target.checked)} checked={permissions.read.includes('dashboard')}/> Dashboard</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'transactions', e.target.checked)} checked={permissions.read.includes('transactions')}/> Transactions</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'invoices', e.target.checked)} checked={permissions.read.includes('invoices')}/> Invoices</label>
+                        </div>
+                    </div>
+                     <div>
+                        <h4 className='font-semibold mb-2'>Write Access</h4>
+                        <div className='space-y-2'>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'transactions', e.target.checked)} checked={permissions.write.includes('transactions')}/> Transactions</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'invoices', e.target.checked)} checked={permissions.write.includes('invoices')}/> Invoices</label>
+                        </div>
+                    </div>
+                 </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({isOpen: false})} variant="secondary">Cancel</Button>
+                    <Button type="submit" isLoading={isSaving}>Add Contributor</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
+const PrivacyPolicyModal = ({ modal, setModal }) => {
+    if (modal.type !== 'privacy') return null;
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({ isOpen: false })} title="Privacy Policy">
+            <div className="space-y-4 text-sm text-gray-600 dark:text-gray-300">
+                <p><strong>Data Management:</strong> Your data, including financial transactions and project details, is stored securely in your private space on Google's Firebase servers. We use Firebase Authentication for secure sign-in and Firestore Security Rules to ensure that only you and the contributors you explicitly invite can access your project data.</p>
+                <p><strong>Data Deletion:</strong> You have full control over your data. You can delete individual entries (transactions, invoices) or delete all content within a project from the "Project Settings" page. Deleting a project permanently removes all associated data from our servers. This action is irreversible.</p>
+                <p><strong>Usage Limits:</strong> As this is a free-to-use application, there are some limitations in place. Each user is allowed a maximum of 5 projects. The total storage per user is currently limited to approximately 500MB. These limits are in place to ensure fair usage for all users on this test setup.</p>
+            </div>
+        </Modal>
+    );
+};
+
 
 const NavLink = ({ label, viewName, currentView, setView, setIsSidebarOpen }) => (
     <li>
