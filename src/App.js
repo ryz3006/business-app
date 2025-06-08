@@ -1209,6 +1209,7 @@ const App = () => {
             <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} userRole={userRole} />
             <EditProjectSettingsModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleEditProjectSettings} />
             <PrivacyPolicyModal modal={modal} setModal={setModal} />
+            <AddContributorModal modal={modal} setModal={setModal} onAddContributor={handleAddOrUpdateContributor} project={selectedProject} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
@@ -1269,7 +1270,10 @@ const App = () => {
                     {renderView()}
                 </div>
                  <div className="text-center mt-8">
-                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline">Privacy Policy</button>
+                    <button onClick={() => setDarkMode(!isDarkMode)} className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                        <Icon path={isDarkMode ? ICONS.sun : ICONS.moon} />
+                    </button>
+                    <button onClick={() => setModal({ isOpen: true, type: 'privacy' })} className="text-sm text-gray-500 hover:underline ml-4">Privacy Policy</button>
                  </div>
             </main>
         </div>
@@ -1620,7 +1624,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
+const ProjectSettings = ({ project, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
     
     const handleAddContributorClick = () => {
         setModal({ isOpen: true, type: 'addContributor', data: project });
