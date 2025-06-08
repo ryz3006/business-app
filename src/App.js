@@ -813,7 +813,7 @@ const App = () => {
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal}/>;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -848,6 +848,7 @@ const App = () => {
             {/* Modals */}
             <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
+            <EditContributorModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleAddOrUpdateContributor} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
@@ -1020,26 +1021,99 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
     );
 }
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole }) => {
+const EditContributorModal = ({ modal, setModal, project, onSave }) => {
+    const { email, perms } = modal.data || {};
+    const [permissions, setPermissions] = useState(perms || { read: [], write: [] });
+
+    useEffect(() => {
+        if(modal.data?.perms) {
+            setPermissions(modal.data.perms);
+        }
+    }, [modal.data]);
+
+    if (modal.type !== 'editContributor') return null;
+
+    const handlePermissionChange = (type, page, checked) => {
+        setPermissions(prev => {
+            const currentPerms = new Set(prev[type]);
+            if (checked) {
+                currentPerms.add(page);
+                if(type === 'write' && !prev.read.includes(page)) {
+                    const readPerms = new Set(prev.read);
+                    readPerms.add(page);
+                    return { ...prev, read: Array.from(readPerms), write: Array.from(currentPerms) };
+                }
+            } else {
+                currentPerms.delete(page);
+                if(type === 'read' && prev.write.includes(page)) {
+                    const writePerms = new Set(prev.write);
+                    writePerms.delete(page);
+                    return { ...prev, read: Array.from(currentPerms), write: Array.from(writePerms) };
+                }
+            }
+            return { ...prev, [type]: Array.from(currentPerms) };
+        });
+    };
+    
+    const handleSave = () => {
+        onSave(project, email, permissions);
+        setModal({ isOpen: false });
+    }
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title={`Edit Permissions for ${email}`}>
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <h4 className='font-semibold mb-2'>Read Access</h4>
+                        <div className='space-y-2'>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'dashboard', e.target.checked)} checked={permissions.read.includes('dashboard')}/> Dashboard</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'transactions', e.target.checked)} checked={permissions.read.includes('transactions')}/> Transactions</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'invoices', e.target.checked)} checked={permissions.read.includes('invoices')}/> Invoices</label>
+                        </div>
+                    </div>
+                     <div>
+                        <h4 className='font-semibold mb-2'>Write Access</h4>
+                        <div className='space-y-2'>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'transactions', e.target.checked)} checked={permissions.write.includes('transactions')}/> Transactions</label>
+                            <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'invoices', e.target.checked)} checked={permissions.write.includes('invoices')}/> Invoices</label>
+                        </div>
+                    </div>
+                 </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({isOpen: false})} variant="secondary">Cancel</Button>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
+
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [permissions, setPermissions] = useState({ read: [], write: [] });
 
     const handlePermissionChange = (type, page, checked) => {
         setPermissions(prev => {
-            const newPerms = new Set(prev[type]);
+            const currentPerms = new Set(prev[type]);
             if (checked) {
-                newPerms.add(page);
-                if (type === 'write') newPerms.add(page); // Write implies read
+                currentPerms.add(page);
+                if (type === 'write' && !prev.read.includes(page)) {
+                    const readPerms = new Set(prev.read);
+                    readPerms.add(page);
+                    return { ...prev, read: Array.from(readPerms), write: Array.from(currentPerms) };
+                }
             } else {
-                newPerms.delete(page);
-                 if (type === 'read' && page !== 'dashboard') { // Cannot un-read a page if you have write access to it
-                     const writePerms = new Set(prev.write);
-                     writePerms.delete(page);
-                     return { ...prev, read: Array.from(newPerms), write: Array.from(writePerms) };
-                 }
+                currentPerms.delete(page);
+                if (type === 'read' && prev.write.includes(page)) {
+                    const writePerms = new Set(prev.write);
+                    writePerms.delete(page);
+                    return { ...prev, read: Array.from(currentPerms), write: Array.from(writePerms) };
+                }
             }
-            return { ...prev, [type]: Array.from(newPerms) };
+            return { ...prev, [type]: Array.from(currentPerms) };
         });
     };
 
@@ -1127,7 +1201,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <button onClick={() => alert('Editing permissions coming soon!')} className="text-blue-500 hover:text-blue-700 text-sm mr-4">Edit</button>
+                                        <button onClick={() => setModal({ isOpen: true, type: 'editContributor', data: { email: email.replace(/_/g, '.'), perms } })} className="text-blue-500 hover:text-blue-700 text-sm mr-4">Edit</button>
                                         <button onClick={() => onRemoveContributor(project, email.replace(/_/g, '.'))} className="text-red-500 hover:text-red-700 text-sm">Remove</button>
                                     </td>
                                 </tr>
