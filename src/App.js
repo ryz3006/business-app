@@ -50,7 +50,9 @@ const ICONS = {
     download: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3",
     upload: "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v12",
     close: "M6 18L18 6M6 6l12 12",
-    back: "M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"
+    back: "M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3",
+    sun: "M12 3v.01M6.31 6.31l.01.01M3 12h.01M6.31 17.69l.01.01M12 21v-.01M17.69 17.69l.01.01M21 12h-.01M17.69 6.31l.01.01",
+    moon: "M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z",
 };
 
 // --- Reusable UI Components ---
@@ -775,6 +777,7 @@ const App = () => {
     const [modal, setModal] = useState({ isOpen: false, type: '', data: null });
     const [userRole, setUserRole] = useState(null);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+    const [isDarkMode, setDarkMode] = useState(false);
 
     // Data states
     const [transactions, setTransactions] = useState([]);
@@ -1159,7 +1162,7 @@ const App = () => {
     
     if (!selectedProject) {
         return (
-            <div className='relative min-h-screen'>
+            <div>
                 <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
                 <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
                 <ProjectSelector 
@@ -1560,7 +1563,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency] = useState('₹');
+    const [defaultCurrency, ] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
