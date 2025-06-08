@@ -131,7 +131,7 @@ const Toast = ({ message, show, type = 'success' }) => {
 
 // --- Core Feature Components ---
 
-const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
+const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, selectedProject }) => {
     // State for date range filtering
     const [startDate, setStartDate] = useState(() => {
         const date = new Date();
@@ -221,8 +221,35 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
     };
     
     const exportReportPDF = () => {
-        // PDF generation logic would go here
-        alert("PDF Report download coming soon!");
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        doc.setFontSize(18);
+        doc.text(`Cash Flow Report: ${selectedProject.name}`, 14, 22);
+        doc.setFontSize(11);
+        doc.setTextColor(100);
+        doc.text(`Date Range: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`, 14, 30);
+
+        doc.autoTable({
+            startY: 40,
+            head: [['Date', 'Description', 'Category', 'User', 'Income', 'Expense']],
+            body: filteredTransactions.map(t => [
+                new Date(t.date).toLocaleString(),
+                t.description,
+                t.category,
+                t.user,
+                t.type === 'income' ? `₹${t.amount.toLocaleString('en-IN')}` : '-',
+                t.type === 'expense' ? `₹${t.amount.toLocaleString('en-IN')}` : '-'
+            ]),
+        });
+        
+        const finalY = doc.lastAutoTable.finalY || 10;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
+        doc.text(footerText, 14, finalY + 15);
+
+        doc.save(`Report-${selectedProject.name}-${startDate}-to-${endDate}.pdf`);
     }
     
     return (
@@ -311,7 +338,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
                             <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
                                <div>
                                    <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
-                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleDateString()} by {t.user}</p>
+                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleString()} by {t.user}</p>
                                </div>
                                 <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                     {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
@@ -325,10 +352,10 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
     );
 };
 
-const TransactionForm = ({ onSave, onCancel, transaction }) => {
+const TransactionForm = ({ onSave, onCancel, transaction, categories, allTags }) => {
     const [type, setType] = useState(transaction?.type || 'expense');
     const [amount, setAmount] = useState(transaction?.amount || '');
-    const [category, setCategory] = useState(transaction?.category || 'food');
+    const [category, setCategory] = useState(transaction?.category || '');
     const [date, setDate] = useState(transaction?.date || new Date().toISOString().split('T')[0]);
     const [description, setDescription] = useState(transaction?.description || '');
     const [tags, setTags] = useState(transaction?.tags?.join(', ') || '');
@@ -336,6 +363,10 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!category) {
+            alert("Please select or enter a category.");
+            return;
+        }
         setIsSaving(true);
         await onSave({
             type,
@@ -356,9 +387,25 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
             </Select>
             <Input label="Amount" id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} required step="0.01" />
             <Input label="Description" id="description" type="text" value={description} onChange={e => setDescription(e.target.value)} required />
-            <Input label="Category" id="category" type="text" value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g., Food, Travel, Salary" />
+            
+            <div>
+                <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                <Input list="category-suggestions" id="category" type="text" value={category} onChange={e => setCategory(e.target.value)} required placeholder="e.g., Food, Travel, Salary" />
+                <datalist id="category-suggestions">
+                    {categories.map(cat => <option key={cat} value={cat} />)}
+                </datalist>
+            </div>
+            
             <Input label="Date" id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
-            <Input label="Tags (comma-separated)" id="tags" type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g., business, personal" />
+
+            <div>
+                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tags (comma-separated)</label>
+                <Input list="tag-suggestions" id="tags" type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g., business, personal" />
+                 <datalist id="tag-suggestions">
+                    {allTags.map(tag => <option key={tag} value={tag} />)}
+                </datalist>
+            </div>
+
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onCancel} variant="secondary" type="button">Cancel</Button>
                 <Button type="submit" isLoading={isSaving}>Save</Button>
@@ -367,7 +414,7 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
     );
 };
 
-const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded, userRole, showToast }) => {
+const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, allTags, exportLibsLoaded, userRole, showToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -414,30 +461,48 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
     const exportToPDF = () => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.text(`Transactions for ${selectedProject.name}`, 14, 16);
+        
+        doc.setFontSize(18);
+        doc.text(`Transactions for ${selectedProject.name}`, 14, 22);
+
         doc.autoTable({
+            startY: 30,
             head: [['Date', 'Description', 'Category', 'User', 'Amount']],
             body: transactions.map(t => [
-                new Date(t.date).toLocaleDateString(),
+                new Date(t.date).toLocaleString(),
                 t.description,
                 t.category,
                 t.user,
                 `₹${t.amount.toLocaleString('en-IN')}`
             ]),
         });
+        
+        const finalY = doc.lastAutoTable.finalY || 10;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
+        doc.text(footerText, 14, finalY + 15);
+
         doc.save(`${selectedProject.name}-transactions.pdf`);
     };
 
     const exportToExcel = () => {
         const { XLSX } = window;
-        const worksheet = XLSX.utils.json_to_sheet(transactions.map(t => ({
-            Date: new Date(t.date).toLocaleDateString(),
+        const data = transactions.map(t => ({
+            Date: new Date(t.date).toLocaleString(),
             Description: t.description,
             Category: t.category,
             User: t.user,
             Amount: t.amount,
             Tags: t.tags?.join(', ')
-        })));
+        }));
+        data.push({}); // Spacer row
+        data.push({Date: `Report for: ${selectedProject.name}`});
+        data.push({Date: `Downloaded by: ${user.displayName}`});
+        data.push({Date: `Downloaded on: ${new Date().toLocaleString()}`});
+        data.push({Date: "Generated using Amigos - Business App"});
+
+        const worksheet = XLSX.utils.json_to_sheet(data, {skipHeader: true});
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
         XLSX.writeFile(workbook, `${selectedProject.name}-transactions.xlsx`);
@@ -474,7 +539,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
             </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingTransaction ? 'Edit Transaction' : 'New Transaction'}>
-                <TransactionForm onSave={handleSave} onCancel={() => setIsModalOpen(false)} transaction={editingTransaction} />
+                <TransactionForm onSave={handleSave} onCancel={() => setIsModalOpen(false)} transaction={editingTransaction} categories={categories} allTags={allTags}/>
             </Modal>
             
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-x-auto">
@@ -492,7 +557,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                     <tbody>
                         {filteredTransactions.map(t => (
                             <tr key={t.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4">{new Date(t.date).toLocaleDateString()}</td>
+                                <td className="px-6 py-4">{new Date(t.date).toLocaleString()}</td>
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{t.description}</td>
                                 <td className="px-6 py-4">{t.user}</td>
                                 <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">{t.category}</span></td>
@@ -625,6 +690,13 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
             body: [['Service/Product', `₹${invoice.amount.toLocaleString('en-IN')}`]],
             foot: [['Total', `₹${invoice.amount.toLocaleString('en-IN')}`]]
         });
+        
+        const finalY = doc.lastAutoTable.finalY || 10;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
+        doc.text(footerText, 14, finalY + 15);
+
 
         doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
     };
@@ -713,6 +785,14 @@ const App = () => {
     const categories = useMemo(() => {
         const catSet = new Set(transactions.map(t => t.category));
         return Array.from(catSet);
+    }, [transactions]);
+    
+    const allTags = useMemo(() => {
+        const tagSet = new Set();
+        transactions.forEach(t => {
+            t.tags?.forEach(tag => tagSet.add(tag));
+        });
+        return Array.from(tagSet);
     }, [transactions]);
 
     const showToast = (message, type = 'success') => {
@@ -977,9 +1057,9 @@ const App = () => {
     const renderView = () => {
         switch (view) {
             case 'dashboard':
-                return <Dashboard transactions={transactions} invoices={invoices} setView={setView} exportLibsLoaded={exportLibsLoaded}/>;
+                return <Dashboard transactions={transactions} invoices={invoices} setView={setView} exportLibsLoaded={exportLibsLoaded} user={user} selectedProject={selectedProject}/>;
             case 'transactions':
-                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
+                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} allTags={allTags} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
             case 'settings':
