@@ -44,6 +44,7 @@ const ICONS = {
     dashboard: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z",
     transactions: "M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5",
     invoices: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    bills: "M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0H21m-9 6h9",
     settings: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.485.4.664 1.076.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281zM12 15a3 3 0 100-6 3 3 0 000 6z",
     logout: "M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75",
     plus: "M12 4.5v15m7.5-7.5h-15",
@@ -166,7 +167,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999); // Include the whole end day
         return transactions.filter(t => {
-            const tDate = new Date(t.date);
+            const tDate = t.createdAt.seconds ? new Date(t.createdAt.seconds * 1000) : new Date();
             return tDate >= start && tDate <= end;
         });
     }, [transactions, startDate, endDate]);
@@ -174,7 +175,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
     const cashFlowData = useMemo(() => {
         const flow = {};
         filteredTransactions.forEach(t => {
-            const date = new Date(t.date).toISOString().split('T')[0];
+            const date = new Date(t.createdAt.seconds * 1000).toISOString().split('T')[0];
             if(!flow[date]) {
                 flow[date] = { date, income: 0, expense: 0 };
             }
@@ -241,7 +242,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
             startY: 40,
             head: [['Date', 'Description', 'Category', 'User', 'Income', 'Expense']],
             body: filteredTransactions.map(t => [
-                new Date(t.date).toLocaleString(),
+                new Date(t.createdAt.seconds * 1000).toLocaleString(),
                 t.description,
                 t.category,
                 t.user,
@@ -345,7 +346,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                             <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
                                <div>
                                    <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
-                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleString()} by {t.user}</p>
+                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.createdAt.seconds * 1000).toLocaleString()} by {t.user}</p>
                                </div>
                                 <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
                                     {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
@@ -476,7 +477,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
             startY: 30,
             head: [['Date', 'Description', 'Category', 'User', 'Amount']],
             body: transactions.map(t => [
-                new Date(t.date).toLocaleString(),
+                new Date(t.createdAt.seconds * 1000).toLocaleString(),
                 t.description,
                 t.category,
                 t.user,
@@ -496,7 +497,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
     const exportToExcel = () => {
         const { XLSX } = window;
         const data = transactions.map(t => ({
-            Date: new Date(t.date).toLocaleString(),
+            Date: new Date(t.createdAt.seconds * 1000).toLocaleString(),
             Description: t.description,
             Category: t.category,
             User: t.user,
@@ -564,7 +565,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                     <tbody>
                         {filteredTransactions.map(t => (
                             <tr key={t.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <td className="px-6 py-4">{new Date(t.date).toLocaleString()}</td>
+                                <td className="px-6 py-4">{new Date(t.createdAt.seconds * 1000).toLocaleString()}</td>
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{t.description}</td>
                                 <td className="px-6 py-4">{t.user}</td>
                                 <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">{t.category}</span></td>
@@ -591,7 +592,6 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     const [tax, setTax] = useState(invoice?.tax || 0);
     const [dueDate, setDueDate] = useState(invoice?.dueDate || new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState(invoice?.status || 'pending');
-    const [pdfFile, setPdfFile] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -603,7 +603,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
             tax: parseFloat(tax) || 0,
             dueDate,
             status
-        }, pdfFile);
+        });
         setIsSaving(false);
     };
 
@@ -618,7 +618,6 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
                 <option value="paid">Paid</option>
                 <option value="overdue">Overdue</option>
             </Select>
-            <Input label="Upload Bill (PDF)" id="pdfFile" type="file" accept="application/pdf" onChange={e => setPdfFile(e.target.files[0])} />
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onCancel} variant="secondary" type="button">Cancel</Button>
                 <Button type="submit" isLoading={isSaving}>Save Invoice</Button>
@@ -636,18 +635,8 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
     const handleSave = async (data, pdfFile) => {
         if (!user || !selectedProject || !canWrite) return;
         try {
-            let fileURL = editingInvoice?.fileURL || '';
-            let filePath = editingInvoice?.filePath || '';
-
-            if (pdfFile) {
-                const storageRef = ref(storage, `projects/${selectedProject.id}/invoices/${Date.now()}_${pdfFile.name}`);
-                const snapshot = await uploadBytes(storageRef, pdfFile);
-                fileURL = await getDownloadURL(snapshot.ref);
-                filePath = snapshot.ref.fullPath;
-            }
-            
             const path = `projects/${selectedProject.id}/invoices`;
-            const invoiceData = { ...data, fileURL, filePath, user: user.displayName, userEmail: user.email };
+            const invoiceData = { ...data, user: user.displayName, userEmail: user.email };
             
             if (editingInvoice) {
                 const docRef = doc(db, path, editingInvoice.id);
@@ -768,11 +757,6 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
                              <button onClick={() => generateInvoicePDF(inv)} disabled={!exportLibsLoaded} className="text-gray-500 hover:text-gray-700 dark:hover:text-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                                 <Icon path={ICONS.download} className="w-5 h-5" /> PDF
                             </button>
-                            {inv.fileURL && (
-                                <a href={inv.fileURL} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-700 dark:hover:text-white flex-1 flex items-center justify-center gap-2">
-                                    <Icon path={ICONS.upload} className="w-5 h-5" /> View Bill
-                                </a>
-                            )}
                             <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
                             <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
                         </div>
@@ -783,6 +767,79 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
         </div>
     );
 };
+
+const BillGenerator = ({ invoices, selectedProject, user }) => {
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
+
+    const generateBillPDF = () => {
+        const invoice = invoices.find(inv => inv.id === selectedInvoiceId);
+        if (!invoice) {
+            alert("Please select an invoice to generate a bill.");
+            return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        const companyName = selectedProject.companyName || "Your Company";
+        const currency = selectedProject.defaultCurrency || '₹';
+
+        // Bill Header
+        doc.setFontSize(22);
+        doc.text("Bill", 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(companyName, 14, 30);
+        
+        // Bill Details
+        doc.text(`Bill For: ${invoice.clientName}`, 14, 45);
+        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 140, 45);
+        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 52);
+
+        const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
+        const totalAmount = invoice.amount + taxAmount;
+
+        doc.autoTable({
+            startY: 60,
+            head: [['Description', 'Amount']],
+            body: [
+                ['Service/Product', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
+                 [`Tax (${invoice.tax || 0}%)`, `${currency}${taxAmount.toLocaleString('en-IN')}`],
+            ],
+            foot: [
+                [{ content: 'Total Amount Due', styles: { fontStyle: 'bold' } }, { content: `${currency}${totalAmount.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+            ]
+        });
+
+        let finalY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(10);
+        doc.text("Payment Details:", 14, finalY);
+        doc.text(selectedProject.paymentMethods || 'N/A', 14, finalY + 7);
+
+        finalY = doc.lastAutoTable.finalY + 30;
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
+        doc.text(footerText, 14, finalY + 15);
+        
+        doc.save(`Bill-${invoice.invoiceNumber}.pdf`);
+    };
+
+    return (
+        <Card>
+            <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">Generate Bill</h2>
+            <div className="flex gap-4 items-end">
+                <div className="flex-grow">
+                     <Select label="Select Invoice" id="invoice-select" value={selectedInvoiceId} onChange={e => setSelectedInvoiceId(e.target.value)}>
+                        <option value="">-- Choose an invoice --</option>
+                        {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoiceNumber} - {inv.clientName}</option>)}
+                    </Select>
+                </div>
+                <Button onClick={generateBillPDF} disabled={!selectedInvoiceId}>Generate Bill PDF</Button>
+            </div>
+        </Card>
+    )
+}
+
 
 // --- Main App Component ---
 
@@ -1090,6 +1147,8 @@ const App = () => {
                 return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} allTags={allTags} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
+            case 'bills':
+                return <BillGenerator invoices={invoices} selectedProject={selectedProject} user={user} />;
             case 'settings':
                 return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
@@ -1157,6 +1216,7 @@ const App = () => {
                         {(userRole === 'owner' || userRole?.read?.includes('dashboard')) && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {(userRole === 'owner' || userRole?.read?.includes('transactions')) && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {(userRole === 'owner' || userRole?.read?.includes('invoices')) && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole === 'owner' || userRole?.write?.includes('invoices')) && <NavLink label="Generate Bill" viewName="bills" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
