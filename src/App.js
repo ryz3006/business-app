@@ -149,8 +149,9 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
     const overallStats = useMemo(() => {
         const currentBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
         const pendingInvoices = invoices.filter(i => i.status === 'pending');
+        const dueInvoices = invoices.filter(i => i.status === 'overdue');
         
-        return { currentBalance, pendingInvoices };
+        return { currentBalance, pendingInvoices: pendingInvoices.length, dueInvoices: dueInvoices.length };
     }, [transactions, invoices]);
     
     // Data filtered by the selected date range
@@ -266,16 +267,16 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                     <p className="text-3xl font-bold mt-2">₹{overallStats.currentBalance.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-blue-400 to-blue-600 text-white">
-                    <h4 className="font-bold text-lg">Income (Selected Range)</h4>
+                    <h4 className="font-bold text-lg">Income (Range)</h4>
                     <p className="text-3xl font-bold mt-2">₹{rangeStats.incomeInRange.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-red-400 to-red-600 text-white">
-                    <h4 className="font-bold text-lg">Expenses (Selected Range)</h4>
+                    <h4 className="font-bold text-lg">Expenses (Range)</h4>
                     <p className="text-3xl font-bold mt-2">₹{rangeStats.expensesInRange.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-400 to-yellow-600 text-white cursor-pointer" onClick={() => setView('invoices')}>
-                    <h4 className="font-bold text-lg">Pending Invoices</h4>
-                    <p className="text-3xl font-bold mt-2">{overallStats.pendingInvoices.length}</p>
+                    <h4 className="font-bold text-lg">Due / Pending Invoices</h4>
+                    <p className="text-xl font-bold mt-2">Due: {overallStats.dueInvoices} / Pending: {overallStats.pendingInvoices}</p>
                 </Card>
             </div>
 
@@ -589,13 +590,17 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     const [amount, setAmount] = useState(invoice?.amount || '');
     const [tax, setTax] = useState(invoice?.tax || 0);
     const [dueDate, setDueDate] = useState(invoice?.dueDate || new Date().toISOString().split('T')[0]);
-    const [status, setStatus] = useState(invoice?.status || 'pending');
     const [serviceDetails, setServiceDetails] = useState(invoice?.serviceDetails || '');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSaving(true);
+
+        const today = new Date().setHours(0, 0, 0, 0);
+        const due = new Date(dueDate).setHours(0, 0, 0, 0);
+        const status = due < today ? 'overdue' : 'pending';
+
         await onSave({
             clientName,
             amount: parseFloat(amount),
@@ -614,11 +619,6 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
             <Input label="Amount" id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} required step="0.01" />
             <Input label="Tax (%)" id="tax" type="number" value={tax} onChange={e => setTax(e.target.value)} step="0.01" />
             <Input label="Due Date" id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
-            <Select label="Status" id="status" value={status} onChange={e => setStatus(e.target.value)}>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-            </Select>
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onCancel} variant="secondary" type="button">Cancel</Button>
                 <Button type="submit" isLoading={isSaving}>Save Invoice</Button>
@@ -707,7 +707,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
                         <p className="text-sm text-gray-500 dark:text-gray-400">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
                         <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                              <Button onClick={() => setModal({isOpen: true, type: 'generateBill', data: inv})} disabled={!exportLibsLoaded} className="flex-1" variant="secondary">
-                                Generate Bill
+                                Generate PDF
                             </Button>
                             <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700 p-2" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
                             <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700 p-2" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
@@ -863,7 +863,16 @@ const App = () => {
         const invoiceQuery = query(collection(db, projectPath, 'invoices'), orderBy('createdAt', 'desc'));
         const unsubscribeInvoices = onSnapshot(invoiceQuery, (snapshot) => {
             const fetchedInvoices = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setInvoices(fetchedInvoices);
+            // Automatically update status to 'overdue' if due date has passed
+            const today = new Date().setHours(0,0,0,0);
+            const updatedInvoices = fetchedInvoices.map(inv => {
+                const dueDate = new Date(inv.dueDate).setHours(0,0,0,0);
+                if (inv.status === 'pending' && dueDate < today) {
+                    return {...inv, status: 'overdue'};
+                }
+                return inv;
+            });
+            setInvoices(updatedInvoices);
         });
 
         return () => {
@@ -1050,7 +1059,7 @@ const App = () => {
             case 'transactions':
                 return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} allTags={allTags} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
-                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} setModal={setModal}/>;
+                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} setModal={setModal} handleAddTransaction={handleAddTransactionFromBill}/>;
             case 'settings':
                 return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
@@ -1344,28 +1353,32 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
 
     if (modal.type !== 'generateBill') return null;
 
-    const generateBillPDF = (invoice) => {
+    const generatePDF = (invoice, type) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
         const companyName = project.companyName || "Your Company";
         const currency = project.defaultCurrency || '₹';
         const companyContact = `${project.companyContactMail || ''} ${project.companyContactNumber || ''}`.trim();
+        const docTitle = type === 'bill' ? 'Bill' : 'Invoice';
 
         doc.setFontSize(22);
-        doc.text("Bill", 105, 20, { align: 'center' });
+        doc.text(docTitle, 105, 20, { align: 'center' });
         doc.setFontSize(12);
         doc.text(companyName, 14, 30);
         
-        doc.text(`Bill For: ${invoice.clientName}`, 14, 45);
-        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 140, 45);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 52);
+        doc.text(`Bill To: ${invoice.clientName}`, 14, 45);
+        doc.text(`${docTitle} #: ${invoice.invoiceNumber}`, 140, 45);
+        doc.text(`Date: ${new Date(invoice.createdAt.seconds * 1000).toLocaleDateString()}`, 140, 52);
+        if(type === 'invoice') {
+            doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 140, 59);
+        }
 
         const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
         const totalAmount = invoice.amount + taxAmount;
 
         doc.autoTable({
-            startY: 60,
+            startY: 70,
             head: [['Description', 'Amount']],
             body: [
                 [invoice.serviceDetails || 'Service/Product', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
@@ -1384,18 +1397,19 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
         finalY = doc.lastAutoTable.finalY + 30;
         doc.setFontSize(8);
         doc.setTextColor(150);
-        doc.text(`This is an electronically generated invoice on behalf of '${project.name}' by '${companyName}', so no need to sign separately.`, 14, finalY + 15);
+        doc.text(`This is an electronically generated document on behalf of '${project.name}' by '${companyName}'.`, 14, finalY + 15);
         if (companyContact) {
             doc.text(`Any concerns please connect ${companyContact}`, 14, finalY + 20);
         }
         
-        doc.save(`Bill-${invoice.invoiceNumber}.pdf`);
+        doc.save(`${docTitle}-${invoice.invoiceNumber}.pdf`);
     };
 
     const handleProcess = async () => {
         setIsProcessing(true);
 
-        generateBillPDF(invoice);
+        const docType = status === 'paid' ? 'bill' : 'invoice';
+        generatePDF(invoice, docType);
 
         if (status !== invoice.status) {
             const invoiceRef = doc(db, `projects/${project.id}/invoices/${invoice.id}`);
@@ -1417,13 +1431,13 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
     };
 
     return (
-        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title={`Generate Bill for INV-${invoice.invoiceNumber}`}>
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title={`Generate Document for INV-${invoice.invoiceNumber}`}>
             <div className="space-y-4">
                 <div>
                     <Select label="Update Invoice Status" id="invoiceStatus" value={status} onChange={e => setStatus(e.target.value)}>
                         <option value="pending">Pending</option>
+                         <option value="overdue">Overdue</option>
                         <option value="paid">Paid</option>
-                        <option value="overdue">Overdue</option>
                     </Select>
                 </div>
                 <div>
@@ -1446,7 +1460,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [permissions, setPermissions] = useState({ read: [], write: [] });
-    const [isSavingName, setIsSavingName] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [isAddingContributor, setIsAddingContributor] = useState(false);
 
     const [companyName, setCompanyName] = useState(project.companyName || '');
@@ -1480,7 +1494,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
 
     const handleSettingsSubmit = async (e) => {
         e.preventDefault();
-        setIsSavingName(true);
+        setIsSaving(true);
         await onEditProject(project.id, {
             name,
             companyName,
@@ -1489,7 +1503,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
             defaultCurrency,
             paymentMethods
         });
-        setIsSavingName(false);
+        setIsSaving(false);
     };
     
     const handleAddContributor = async (e) => {
@@ -1516,16 +1530,8 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     return (
         <div className="space-y-8">
             <Card>
-                 <form onSubmit={handleSettingsSubmit} className="space-y-4">
-                    <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
-                    <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
-                    <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
-                    <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
-                    <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
-                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} disabled readOnly />
-                    <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
-                    <Button type="submit" isLoading={isSavingName}>Save Settings</Button>
-                </form>
+                <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
+                <Button onClick={() => setModal({isOpen: true, type: 'editProjectSettings'})} variant='primary'>Edit Settings</Button>
             </Card>
             <Card>
                  <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
