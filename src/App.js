@@ -149,17 +149,12 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
 
     // Top-level stats (always up-to-date)
     const overallStats = useMemo(() => {
-        const now = new Date();
-        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        
-        const incomeThisMonth = transactions.filter(t => t.type === 'income' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
-        const expensesThisMonth = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
         const currentBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
         const pendingInvoices = invoices.filter(i => i.status === 'pending');
         
-        return { incomeThisMonth, expensesThisMonth, currentBalance, pendingInvoices };
+        return { currentBalance, pendingInvoices };
     }, [transactions, invoices]);
-
+    
     // Data filtered by the selected date range
     const filteredTransactions = useMemo(() => {
         const start = new Date(startDate);
@@ -170,6 +165,12 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
             return tDate >= start && tDate <= end;
         });
     }, [transactions, startDate, endDate]);
+
+    const rangeStats = useMemo(() => {
+        const incomeInRange = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        const expensesInRange = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+        return { incomeInRange, expensesInRange };
+    }, [filteredTransactions]);
 
     const cashFlowData = useMemo(() => {
         const flow = {};
@@ -267,12 +268,12 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                     <p className="text-3xl font-bold mt-2">₹{overallStats.currentBalance.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-blue-400 to-blue-600 text-white">
-                    <h4 className="font-bold text-lg">Income (This Month)</h4>
-                    <p className="text-3xl font-bold mt-2">₹{overallStats.incomeThisMonth.toLocaleString('en-IN')}</p>
+                    <h4 className="font-bold text-lg">Income (Selected Range)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{rangeStats.incomeInRange.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-red-400 to-red-600 text-white">
-                    <h4 className="font-bold text-lg">Expenses (This Month)</h4>
-                    <p className="text-3xl font-bold mt-2">₹{overallStats.expensesThisMonth.toLocaleString('en-IN')}</p>
+                    <h4 className="font-bold text-lg">Expenses (Selected Range)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{rangeStats.expensesInRange.toLocaleString('en-IN')}</p>
                 </Card>
                 <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-400 to-yellow-600 text-white cursor-pointer" onClick={() => setView('invoices')}>
                     <h4 className="font-bold text-lg">Pending Invoices</h4>
