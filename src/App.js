@@ -159,7 +159,7 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
 
     // Top-level stats (always up-to-date)
     const overallStats = useMemo(() => {
-        const currentBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+        const currentBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' || t.type === 'capital' ? t.amount : -(t.amount)), 0);
         const pendingInvoices = invoices.filter(i => i.status === 'pending');
         const dueInvoices = invoices.filter(i => i.status === 'overdue');
         
@@ -180,7 +180,9 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
     const rangeStats = useMemo(() => {
         const incomeInRange = filteredTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
         const expensesInRange = filteredTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-        return { incomeInRange, expensesInRange };
+        const capitalInRange = filteredTransactions.filter(t => t.type === 'capital').reduce((sum, t) => sum + t.amount, 0);
+        const profitShareInRange = filteredTransactions.filter(t => t.type === 'profit-share').reduce((sum, t) => sum + t.amount, 0);
+        return { incomeInRange, expensesInRange, capitalInRange, profitShareInRange };
     }, [filteredTransactions]);
 
     const cashFlowData = useMemo(() => {
@@ -190,19 +192,28 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
             if(!flow[date]) {
                 flow[date] = { date, income: 0, expense: 0 };
             }
-            if (t.type === 'income') flow[date].income += t.amount;
-            if (t.type === 'expense') flow[date].expense += t.amount;
+            if (t.type === 'income' || t.type === 'capital') flow[date].income += t.amount;
+            if (t.type === 'expense' || t.type === 'profit-share') flow[date].expense += t.amount;
         });
         return Object.values(flow).sort((a, b) => new Date(a.date) - new Date(b.date));
     }, [filteredTransactions]);
-
-    const expenseByCategory = useMemo(() => {
-        const categoryMap = {};
-        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
-            const category = t.category || 'Uncategorized';
-            categoryMap[category] = (categoryMap[category] || 0) + t.amount;
+    
+    const capitalByPerson = useMemo(() => {
+        const personMap = {};
+        filteredTransactions.filter(t => t.type === 'capital').forEach(t => {
+            const person = t.paidBy || 'Unknown';
+            personMap[person] = (personMap[person] || 0) + t.amount;
         });
-        return Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
+        return Object.entries(personMap).map(([name, value]) => ({ name, value }));
+    }, [filteredTransactions]);
+
+    const profitShareByPerson = useMemo(() => {
+        const personMap = {};
+        filteredTransactions.filter(t => t.type === 'profit-share').forEach(t => {
+            const person = t.paidTo || 'Unknown';
+            personMap[person] = (personMap[person] || 0) + t.amount;
+        });
+        return Object.entries(personMap).map(([name, value]) => ({ name, value }));
     }, [filteredTransactions]);
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
@@ -290,6 +301,14 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                     <h4 className="font-bold text-lg">Due / Pending Invoices</h4>
                     <p className="text-xl font-bold mt-2">Due: {overallStats.dueInvoices} / Pending: {overallStats.pendingInvoices}</p>
                 </Card>
+                <Card className="md:col-span-2 lg:col-span-2 bg-gradient-to-br from-indigo-400 to-indigo-600 text-white">
+                    <h4 className="font-bold text-lg">Total Capital (Range)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{rangeStats.capitalInRange.toLocaleString('en-IN')}</p>
+                </Card>
+                <Card className="md:col-span-2 lg:col-span-2 bg-gradient-to-br from-purple-400 to-purple-600 text-white">
+                    <h4 className="font-bold text-lg">Total Profit Share (Range)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{rangeStats.profitShareInRange.toLocaleString('en-IN')}</p>
+                </Card>
             </div>
 
             <Card>
@@ -336,11 +355,11 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card>
-                    <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Expense Breakdown</h3>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Capital by Source</h3>
                     <Recharts.ResponsiveContainer width="100%" height={300}>
                         <Recharts.PieChart>
-                            <Recharts.Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
-                                {expenseByCategory.map((entry, index) => (
+                            <Recharts.Pie data={capitalByPerson} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
+                                {capitalByPerson.map((entry, index) => (
                                     <Recharts.Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                 ))}
                             </Recharts.Pie>
@@ -349,22 +368,19 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                         </Recharts.PieChart>
                     </Recharts.ResponsiveContainer>
                 </Card>
-
-                <Card>
-                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Recent Transactions</h3>
-                     <div className="space-y-3 max-h-72 overflow-y-auto">
-                        {transactions.slice(0, 10).map(t => (
-                            <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
-                               <div>
-                                   <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
-                                   <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.createdAt.seconds * 1000).toLocaleString()} by {t.user}</p>
-                               </div>
-                                <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                                    {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
-                                </p>
-                            </div>
-                        ))}
-                     </div>
+                 <Card>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Profit Share by Recipient</h3>
+                    <Recharts.ResponsiveContainer width="100%" height={300}>
+                        <Recharts.PieChart>
+                            <Recharts.Pie data={profitShareByPerson} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
+                                {profitShareByPerson.map((entry, index) => (
+                                    <Recharts.Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                            </Recharts.Pie>
+                            <Recharts.Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />
+                            <Recharts.Legend />
+                        </Recharts.PieChart>
+                    </Recharts.ResponsiveContainer>
                 </Card>
             </div>
         </div>
@@ -378,6 +394,8 @@ const TransactionForm = ({ onSave, onCancel, transaction, categories, allTags })
     const [date, setDate] = useState(transaction?.date || new Date().toISOString().split('T')[0]);
     const [description, setDescription] = useState(transaction?.description || '');
     const [tags, setTags] = useState(transaction?.tags?.join(', ') || '');
+    const [paidBy, setPaidBy] = useState(transaction?.paidBy || '');
+    const [paidTo, setPaidTo] = useState(transaction?.paidTo || '');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -394,6 +412,8 @@ const TransactionForm = ({ onSave, onCancel, transaction, categories, allTags })
             date,
             description,
             tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
+            paidBy: type === 'capital' ? paidBy : null,
+            paidTo: type === 'profit-share' ? paidTo : null,
         });
         setIsSaving(false);
     };
@@ -403,10 +423,16 @@ const TransactionForm = ({ onSave, onCancel, transaction, categories, allTags })
             <Select label="Type" id="type" value={type} onChange={e => setType(e.target.value)}>
                 <option value="expense">Expense</option>
                 <option value="income">Income</option>
+                <option value="capital">Capital/Investment</option>
+                <option value="profit-share">Profit Share</option>
             </Select>
             <Input label="Amount" id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} required step="0.01" />
             <Input label="Description" id="description" type="text" value={description} onChange={e => setDescription(e.target.value)} required />
             
+            {type === 'capital' && <Input label="Paid By" id="paidBy" value={paidBy} onChange={e => setPaidBy(e.target.value)} required />}
+            {type === 'profit-share' && <Input label="Paid To" id="paidTo" value={paidTo} onChange={e => setPaidTo(e.target.value)} required />}
+
+
             <div>
                 <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                 <Input list="category-suggestions" id="category" type="text" value={category} onChange={e => setCategory(e.target.value)} required placeholder="e.g., Food, Travel, Salary" />
@@ -580,8 +606,8 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                                 <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{t.description}</td>
                                 <td className="px-6 py-4">{t.user}</td>
                                 <td className="px-6 py-4"><span className="bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded dark:bg-blue-900 dark:text-blue-300">{t.category}</span></td>
-                                <td className={`px-6 py-4 font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                                     {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
+                                <td className={`px-6 py-4 font-bold ${t.type === 'income' || t.type === 'capital' ? 'text-green-500' : 'text-red-500'}`}>
+                                     {t.type === 'income' || t.type === 'capital' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
                                 </td>
                                 <td className="px-6 py-4 flex gap-2">
                                     <button onClick={() => { setEditingTransaction(t); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
@@ -987,6 +1013,36 @@ const App = () => {
         }
     }
 
+    const handleDeleteProjectContent = async (projectToDelete) => {
+        if(!user || projectToDelete.ownerId !== user.uid) {
+            alert("You can only perform this action on projects you own.");
+            return;
+        };
+        if (!window.confirm(`Are you sure you want to delete all transactions and invoices for "${projectToDelete.name}"? This action cannot be undone.`)) return;
+
+        setIsProcessing(true);
+        try {
+            const projectRef = doc(db, `projects/${projectToDelete.id}`);
+            const batch = writeBatch(db);
+
+            const transactionsRef = collection(projectRef, 'transactions');
+            const invoicesRef = collection(projectRef, 'invoices');
+            const transSnap = await getDocs(transactionsRef);
+            const invSnap = await getDocs(invoicesRef);
+            transSnap.forEach(doc => batch.delete(doc.ref));
+            invSnap.forEach(doc => batch.delete(doc.ref));
+            
+            await batch.commit();
+            showToast("All project content has been deleted.", "success");
+        } catch(e) {
+            console.error("Error deleting project content:", e);
+            showToast("Failed to delete project content.", "error");
+        } finally {
+            setIsProcessing(false);
+        }
+    }
+
+
     const handleAddOrUpdateContributor = async (project, email, permissions) => {
         if (!user || project.ownerId !== user.uid) return;
         const sanitizedEmail = email.replace(/\./g, '_');
@@ -1081,7 +1137,7 @@ const App = () => {
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} setModal={setModal} handleAddTransaction={handleAddTransactionFromBill}/>;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onDeleteProjectContent={handleDeleteProjectContent} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -1487,7 +1543,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, ] = useState('₹');
+    const [defaultCurrency] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -1526,7 +1582,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
     const [contributorEmail, setContributorEmail] = useState('');
     const [permissions, setPermissions] = useState({ read: [], write: [] });
     const [isAddingContributor, setIsAddingContributor] = useState(false);
@@ -1564,29 +1620,6 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         setIsAddingContributor(false);
         setContributorEmail('');
         setPermissions({ read: [], write: [] });
-    }
-    
-    const handleDeleteData = async () => {
-        if (!window.confirm(`Are you sure you want to delete all transactions and invoices for "${project.name}"? This action cannot be undone.`)) return;
-
-        showToast("Deleting project content...", "info");
-        const projectRef = doc(db, `projects/${project.id}`);
-        const batch = writeBatch(db);
-
-        const transactionsRef = collection(projectRef, 'transactions');
-        const invoicesRef = collection(projectRef, 'invoices');
-        const transSnap = await getDocs(transactionsRef);
-        const invSnap = await getDocs(invoicesRef);
-        transSnap.forEach(doc => batch.delete(doc.ref));
-        invSnap.forEach(doc => batch.delete(doc.ref));
-
-        try {
-            await batch.commit();
-            showToast("All project content has been deleted.", "success");
-        } catch (error) {
-            console.error("Error deleting project content:", error);
-            showToast("Failed to delete project content.", "error");
-        }
     }
 
     if(userRole !== 'owner') {
@@ -1661,7 +1694,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
             <Card>
                 <h3 className="text-xl font-bold text-red-500 mb-4">Danger Zone</h3>
                 <div className="space-y-4">
-                     <Button onClick={handleDeleteData} variant="danger" className="w-full justify-start">
+                     <Button onClick={() => onDeleteProjectContent(project)} variant="danger" className="w-full justify-start">
                         Delete All Content in This Project
                     </Button>
                     <Button onClick={() => onDeleteProject(project)} variant="danger" className="w-full justify-start">
