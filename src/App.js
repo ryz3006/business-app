@@ -133,6 +133,18 @@ const Toast = ({ message, show, type = 'success' }) => {
     );
 };
 
+const LoadingOverlay = ({ isVisible }) => {
+    if (!isVisible) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex justify-center items-center">
+            <div className="flex flex-col items-center">
+                <Spinner />
+                <p className="text-white mt-2">Processing...</p>
+            </div>
+        </div>
+    );
+};
+
 
 // --- Core Feature Components ---
 
@@ -725,6 +737,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
 const App = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [view, setView] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [exportLibsLoaded, setExportLibsLoaded] = useState(false);
@@ -943,7 +956,8 @@ const App = () => {
             return;
         };
         if (!window.confirm(`Are you sure you want to permanently delete the project "${projectToDelete.name}" and all its data? This cannot be undone.`)) return;
-
+        
+        setIsProcessing(true);
         try {
             const projectRef = doc(db, `projects/${projectToDelete.id}`);
             const batch = writeBatch(db);
@@ -968,6 +982,8 @@ const App = () => {
         } catch (error) {
             console.error("Error deleting project:", error);
             showToast("Error deleting project.", "error");
+        } finally {
+            setIsProcessing(false);
         }
     }
 
@@ -1098,6 +1114,7 @@ const App = () => {
     return (
         <div className="bg-gray-100 dark:bg-gray-900 min-h-screen">
             <Toast {...toast} />
+            <LoadingOverlay isVisible={isProcessing} />
             {/* Modals */}
             <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
@@ -1470,7 +1487,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, ] = useState('₹');
+    const [defaultCurrency] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
