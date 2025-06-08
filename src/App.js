@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as Recharts from 'recharts';
 
 // --- Helper Functions & Configuration ---
@@ -21,6 +22,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // --- SVG Icons ---
 
@@ -243,8 +245,8 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded, user, se
                 t.description,
                 t.category,
                 t.user,
-                t.type === 'income' ? `₹${t.amount.toLocaleString('en-IN')}` : '-',
-                t.type === 'expense' ? `₹${t.amount.toLocaleString('en-IN')}` : '-'
+                t.type === 'income' ? `${selectedProject.defaultCurrency || '₹'}${t.amount.toLocaleString('en-IN')}` : '-',
+                t.type === 'expense' ? `${selectedProject.defaultCurrency || '₹'}${t.amount.toLocaleString('en-IN')}` : '-'
             ]),
         });
         
@@ -478,7 +480,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                 t.description,
                 t.category,
                 t.user,
-                `₹${t.amount.toLocaleString('en-IN')}`
+                `${selectedProject.defaultCurrency || '₹'}${t.amount.toLocaleString('en-IN')}`
             ]),
         });
         
@@ -589,6 +591,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     const [tax, setTax] = useState(invoice?.tax || 0);
     const [dueDate, setDueDate] = useState(invoice?.dueDate || new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState(invoice?.status || 'pending');
+    const [serviceDetails, setServiceDetails] = useState(invoice?.serviceDetails || '');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -599,7 +602,8 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
             amount: parseFloat(amount),
             tax: parseFloat(tax) || 0,
             dueDate,
-            status
+            status,
+            serviceDetails
         });
         setIsSaving(false);
     };
@@ -607,6 +611,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Client Name" id="clientName" type="text" value={clientName} onChange={e => setClientName(e.target.value)} required />
+            <TextArea label="Service Details" id="serviceDetails" value={serviceDetails} onChange={e => setServiceDetails(e.target.value)} placeholder="e.g., Web Development Services for Q2" />
             <Input label="Amount" id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} required step="0.01" />
             <Input label="Tax (%)" id="tax" type="number" value={tax} onChange={e => setTax(e.target.value)} step="0.01" />
             <Input label="Due Date" id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
@@ -623,7 +628,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     );
 };
 
-const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded, userRole, showToast }) => {
+const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded, userRole, showToast, setModal, handleAddTransaction }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
 
@@ -655,69 +660,6 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
         setEditingInvoice(null);
     };
     
-    const markAsPaid = async (invoiceId) => {
-        const path = `projects/${selectedProject.id}/invoices`;
-        const docRef = doc(db, path, invoiceId);
-        try {
-            await updateDoc(docRef, { status: 'paid' });
-            showToast("Invoice marked as paid.");
-        } catch (error) {
-            console.error("Error marking as paid:", error);
-            showToast("Failed to update invoice.", "error");
-        }
-    }
-
-    const generateBillPDF = (invoice) => {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        
-        const companyName = selectedProject.companyName || "Your Company";
-        const currency = selectedProject.defaultCurrency || '₹';
-
-        // Bill Header
-        doc.setFontSize(22);
-        doc.text("Bill", 105, 20, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text(companyName, 14, 30);
-        
-        // Bill Details
-        doc.text(`Bill For: ${invoice.clientName}`, 14, 45);
-        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 140, 45);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 52);
-
-        const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
-        const totalAmount = invoice.amount + taxAmount;
-
-        doc.autoTable({
-            startY: 60,
-            head: [['Description', 'Amount']],
-            body: [
-                ['Service/Product', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
-                 [`Tax (${invoice.tax || 0}%)`, `${currency}${taxAmount.toLocaleString('en-IN')}`],
-            ],
-            foot: [
-                [{ content: 'Total Amount Due', styles: { fontStyle: 'bold' } }, { content: `${currency}${totalAmount.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-            ]
-        });
-
-        let finalY = doc.lastAutoTable.finalY + 15;
-        doc.setFontSize(10);
-        doc.text("Payment Details:", 14, finalY);
-        doc.text(selectedProject.paymentMethods || 'N/A', 14, finalY + 7);
-
-        finalY = doc.lastAutoTable.finalY + 30;
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
-        doc.text(footerText, 14, finalY + 15);
-        
-        doc.save(`Bill-${invoice.invoiceNumber}.pdf`);
-
-        if (window.confirm("Do you want to mark this invoice as Paid?")) {
-            markAsPaid(invoice.id);
-        }
-    };
-
     const handleDelete = async (id) => {
         if (!user || !selectedProject || !canWrite || !window.confirm('Are you sure? This will delete the invoice record.')) return;
         try {
@@ -765,7 +707,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
                         <p className="text-2xl font-bold text-gray-900 dark:text-white my-4">{selectedProject.defaultCurrency || '₹'}{inv.amount.toLocaleString('en-IN')}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
                         <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                             <Button onClick={() => generateBillPDF(inv)} disabled={!exportLibsLoaded} className="flex-1" variant="secondary">
+                             <Button onClick={() => setModal({isOpen: true, type: 'generateBill', data: inv})} disabled={!exportLibsLoaded} className="flex-1" variant="secondary">
                                 Generate Bill
                             </Button>
                             <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700 p-2" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
@@ -1076,6 +1018,31 @@ const App = () => {
         }
     }
 
+    const handleAddTransactionFromBill = async (invoice, totalAmount) => {
+        if (!user || !selectedProject) return;
+        const canWrite = userRole === 'owner' || userRole?.write?.includes('transactions');
+        if (!canWrite) return;
+        
+        try {
+            const path = `projects/${selectedProject.id}/transactions`;
+            await addDoc(collection(db, path), {
+                amount: totalAmount,
+                category: "Invoice Payment",
+                date: new Date().toISOString().split('T')[0],
+                description: `Payment for Invoice ${invoice.invoiceNumber}`,
+                tags: ['invoice', 'payment'],
+                type: 'income',
+                user: user.displayName,
+                userEmail: user.email,
+                createdAt: new Date(),
+            });
+            showToast("Income transaction created for bill payment!");
+        } catch (error) {
+            console.error("Error creating transaction from bill:", error);
+            showToast("Failed to create income transaction.", "error");
+        }
+    };
+
 
     const renderView = () => {
         switch (view) {
@@ -1084,7 +1051,7 @@ const App = () => {
             case 'transactions':
                 return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} allTags={allTags} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
-                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
+                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} setModal={setModal}/>;
             case 'settings':
                 return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
@@ -1123,6 +1090,7 @@ const App = () => {
             <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
             <EditContributorModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleAddOrUpdateContributor} />
+            <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
