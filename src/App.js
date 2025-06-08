@@ -103,6 +103,13 @@ const Input = React.forwardRef(({ label, id, ...props }, ref) => (
     </div>
 ));
 
+const TextArea = React.forwardRef(({ label, id, ...props }, ref) => (
+    <div>
+        <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
+        <textarea id={id} {...props} ref={ref} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-white" />
+    </div>
+));
+
 const Select = React.forwardRef(({ label, id, children, ...props }, ref) => (
     <div>
         <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
@@ -581,6 +588,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
 const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     const [clientName, setClientName] = useState(invoice?.clientName || '');
     const [amount, setAmount] = useState(invoice?.amount || '');
+    const [tax, setTax] = useState(invoice?.tax || 0);
     const [dueDate, setDueDate] = useState(invoice?.dueDate || new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState(invoice?.status || 'pending');
     const [pdfFile, setPdfFile] = useState(null);
@@ -592,6 +600,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
         await onSave({
             clientName,
             amount: parseFloat(amount),
+            tax: parseFloat(tax) || 0,
             dueDate,
             status
         }, pdfFile);
@@ -602,6 +611,7 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
             <Input label="Client Name" id="clientName" type="text" value={clientName} onChange={e => setClientName(e.target.value)} required />
             <Input label="Amount" id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} required step="0.01" />
+            <Input label="Tax (%)" id="tax" type="number" value={tax} onChange={e => setTax(e.target.value)} step="0.01" />
             <Input label="Due Date" id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
             <Select label="Status" id="status" value={status} onChange={e => setStatus(e.target.value)}>
                 <option value="pending">Pending</option>
@@ -674,29 +684,48 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
     const generateInvoicePDF = (invoice) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.setFontSize(22);
-        doc.text("Invoice", 105, 20, { align: 'center' });
+        
+        const companyName = selectedProject.companyName || "Your Company";
+        const companyContact = `${selectedProject.companyContactMail || ''} ${selectedProject.companyContactNumber || ''}`.trim();
+        const currency = selectedProject.defaultCurrency || '₹';
 
+        doc.setFontSize(22);
+        doc.text(companyName, 14, 22);
         doc.setFontSize(12);
-        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 20, 40);
-        doc.text(`Client: ${invoice.clientName}`, 20, 50);
-        const createdAt = invoice.createdAt?.seconds ? new Date(invoice.createdAt.seconds * 1000) : new Date();
-        doc.text(`Date: ${createdAt.toLocaleDateString()}`, 140, 40);
-        doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 140, 50);
+        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 14, 40);
+        doc.text(`Client: ${invoice.clientName}`, 14, 47);
+
+        doc.text(`Invoice Date: ${new Date(invoice.createdAt.seconds * 1000).toLocaleDateString()}`, 140, 40);
+        doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 140, 47);
+
+        const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
+        const totalAmount = invoice.amount + taxAmount;
 
         doc.autoTable({
-            startY: 70,
+            startY: 60,
             head: [['Description', 'Amount']],
-            body: [['Service/Product', `₹${invoice.amount.toLocaleString('en-IN')}`]],
-            foot: [['Total', `₹${invoice.amount.toLocaleString('en-IN')}`]]
+            body: [
+                ['Item/Service', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
+            ],
+            foot: [
+                ['Subtotal', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
+                [`Tax (${invoice.tax || 0}%)`, `${currency}${taxAmount.toLocaleString('en-IN')}`],
+                [{ content: 'Total', styles: { fontStyle: 'bold' } }, { content: `${currency}${totalAmount.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+            ]
         });
-        
-        const finalY = doc.lastAutoTable.finalY || 10;
+
+        let finalY = doc.lastAutoTable.finalY + 15;
+        doc.setFontSize(10);
+        doc.text("Payment Details:", 14, finalY);
+        doc.text(selectedProject.paymentMethods || 'N/A', 14, finalY + 7);
+
+        finalY = doc.lastAutoTable.finalY + 30;
         doc.setFontSize(8);
         doc.setTextColor(150);
-        const footerText = `Generated using Amigos - Business App by ${user.displayName} on ${new Date().toLocaleString()}`;
-        doc.text(footerText, 14, finalY + 15);
-
+        const footerText1 = `This is an electronically generated invoice on behalf of '${selectedProject.name}' by '${companyName}', so no need to sign separately.`;
+        const footerText2 = `Any concerns please connect ${companyContact}`;
+        doc.text(footerText1, 14, finalY + 15);
+        doc.text(footerText2, 14, finalY + 20);
 
         doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
     };
@@ -889,7 +918,7 @@ const App = () => {
 
         const projectPath = `projects/${selectedProject.id}`;
 
-        const transactionQuery = query(collection(db, projectPath, 'transactions'), orderBy('date', 'desc'));
+        const transactionQuery = query(collection(db, projectPath, 'transactions'), orderBy('createdAt', 'desc'));
         const unsubscribeTransactions = onSnapshot(transactionQuery, (snapshot) => {
             const fetchedTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setTransactions(fetchedTransactions);
@@ -951,16 +980,15 @@ const App = () => {
         }
     };
 
-    const handleEditProject = async (projectId, newName) => {
+    const handleEditProjectSettings = async (projectId, settings) => {
         if(!user) return;
         try {
             const docRef = doc(db, `projects/${projectId}`);
-            await updateDoc(docRef, { name: newName });
-            showToast("Project name updated!");
-            setModal({ isOpen: false });
+            await updateDoc(docRef, settings);
+            showToast("Project settings updated!");
         } catch (error) {
-            console.error("Error updating project:", error);
-            showToast("Error updating project name.", "error");
+            console.error("Error updating project settings:", error);
+            showToast("Error updating settings.", "error");
         }
     }
     
@@ -1063,7 +1091,7 @@ const App = () => {
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -1354,6 +1382,13 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     const [isSavingName, setIsSavingName] = useState(false);
     const [isAddingContributor, setIsAddingContributor] = useState(false);
 
+    const [companyName, setCompanyName] = useState(project.companyName || '');
+    const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
+    const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
+    const [defaultCurrency, setDefaultCurrency] = useState(project.defaultCurrency || '₹');
+    const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
+
+
     const handlePermissionChange = (type, page, checked) => {
         setPermissions(prev => {
             const currentPerms = new Set(prev[type]);
@@ -1376,10 +1411,17 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         });
     };
 
-    const handleNameSubmit = async (e) => {
+    const handleSettingsSubmit = async (e) => {
         e.preventDefault();
         setIsSavingName(true);
-        await onEditProject(project.id, name);
+        await onEditProject(project.id, {
+            name,
+            companyName,
+            companyContactMail,
+            companyContactNumber,
+            defaultCurrency,
+            paymentMethods
+        });
         setIsSavingName(false);
     };
     
@@ -1407,12 +1449,15 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     return (
         <div className="space-y-8">
             <Card>
-                <h3 className="text-xl font-bold mb-4">Edit Project Name</h3>
-                <form onSubmit={handleNameSubmit} className="flex gap-4 items-end">
-                    <div className='flex-grow'>
-                        <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
-                    </div>
-                    <Button type="submit" isLoading={isSavingName}>Save Name</Button>
+                 <form onSubmit={handleSettingsSubmit} className="space-y-4">
+                    <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
+                    <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
+                    <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
+                    <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
+                    <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
+                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} onChange={e => setDefaultCurrency(e.target.value)} placeholder="e.g., $, €, ₹"/>
+                    <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
+                    <Button type="submit" isLoading={isSavingName}>Save Settings</Button>
                 </form>
             </Card>
             <Card>
