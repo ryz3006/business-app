@@ -1487,7 +1487,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency] = useState('₹');
+    const [defaultCurrency, ] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -1566,8 +1566,27 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         setPermissions({ read: [], write: [] });
     }
     
-    const handleDeleteData = () => {
-        alert('Deleting all project data is a highly destructive action. This feature should be implemented with extreme care, possibly using a Cloud Function for reliability.');
+    const handleDeleteData = async () => {
+        if (!window.confirm(`Are you sure you want to delete all transactions and invoices for "${project.name}"? This action cannot be undone.`)) return;
+
+        showToast("Deleting project content...", "info");
+        const projectRef = doc(db, `projects/${project.id}`);
+        const batch = writeBatch(db);
+
+        const transactionsRef = collection(projectRef, 'transactions');
+        const invoicesRef = collection(projectRef, 'invoices');
+        const transSnap = await getDocs(transactionsRef);
+        const invSnap = await getDocs(invoicesRef);
+        transSnap.forEach(doc => batch.delete(doc.ref));
+        invSnap.forEach(doc => batch.delete(doc.ref));
+
+        try {
+            await batch.commit();
+            showToast("All project content has been deleted.", "success");
+        } catch (error) {
+            console.error("Error deleting project content:", error);
+            showToast("Failed to delete project content.", "error");
+        }
     }
 
     if(userRole !== 'owner') {
