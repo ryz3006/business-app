@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import * as Recharts from 'recharts';
 
 // --- Helper Functions & Configuration ---
@@ -22,7 +21,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // --- SVG Icons ---
 
@@ -44,7 +42,6 @@ const ICONS = {
     dashboard: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z",
     transactions: "M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5",
     invoices: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
-    bills: "M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0H21m-9 6h9",
     settings: "M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438.995s.145.755.438.995l1.003.827c.485.4.664 1.076.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-.995s-.145-.755-.437-.995l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281zM12 15a3 3 0 100-6 3 3 0 000 6z",
     logout: "M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75",
     plus: "M12 4.5v15m7.5-7.5h-15",
@@ -632,7 +629,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
 
     const canWrite = userRole === 'owner' || userRole?.write?.includes('invoices');
     
-    const handleSave = async (data, pdfFile) => {
+    const handleSave = async (data) => {
         if (!user || !selectedProject || !canWrite) return;
         try {
             const path = `projects/${selectedProject.id}/invoices`;
@@ -657,127 +654,20 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
         setIsModalOpen(false);
         setEditingInvoice(null);
     };
-
-    const handleDelete = async (id) => {
-        if (!user || !selectedProject || !canWrite || !window.confirm('Are you sure? This will delete the invoice record.')) return;
-        try {
-            const path = `projects/${selectedProject.id}/invoices`;
-            await deleteDoc(doc(db, path, id));
-            showToast("Invoice deleted.");
-        } catch (error) {
-            console.error("Error deleting invoice: ", error);
-            showToast("Failed to delete invoice.", "error");
-        }
-    };
     
-    const generateInvoicePDF = (invoice) => {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        
-        const companyName = selectedProject.companyName || "Your Company";
-        const companyContact = `${selectedProject.companyContactMail || ''} ${selectedProject.companyContactNumber || ''}`.trim();
-        const currency = selectedProject.defaultCurrency || '₹';
-
-        doc.setFontSize(22);
-        doc.text(companyName, 14, 22);
-        doc.setFontSize(12);
-        doc.text(`Invoice #: ${invoice.invoiceNumber}`, 14, 40);
-        doc.text(`Client: ${invoice.clientName}`, 14, 47);
-
-        doc.text(`Invoice Date: ${new Date(invoice.createdAt.seconds * 1000).toLocaleDateString()}`, 140, 40);
-        doc.text(`Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}`, 140, 47);
-
-        const taxAmount = (invoice.amount * (invoice.tax || 0)) / 100;
-        const totalAmount = invoice.amount + taxAmount;
-
-        doc.autoTable({
-            startY: 60,
-            head: [['Description', 'Amount']],
-            body: [
-                ['Item/Service', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
-            ],
-            foot: [
-                ['Subtotal', `${currency}${invoice.amount.toLocaleString('en-IN')}`],
-                [`Tax (${invoice.tax || 0}%)`, `${currency}${taxAmount.toLocaleString('en-IN')}`],
-                [{ content: 'Total', styles: { fontStyle: 'bold' } }, { content: `${currency}${totalAmount.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-            ]
-        });
-
-        let finalY = doc.lastAutoTable.finalY + 15;
-        doc.setFontSize(10);
-        doc.text("Payment Details:", 14, finalY);
-        doc.text(selectedProject.paymentMethods || 'N/A', 14, finalY + 7);
-
-        finalY = doc.lastAutoTable.finalY + 30;
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        const footerText1 = `This is an electronically generated invoice on behalf of '${selectedProject.name}' by '${companyName}', so no need to sign separately.`;
-        const footerText2 = `Any concerns please connect ${companyContact}`;
-        doc.text(footerText1, 14, finalY + 15);
-        doc.text(footerText2, 14, finalY + 20);
-
-        doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
-    };
-
-    const statusBadge = (status) => {
-        const styles = {
-            pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-            paid: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-            overdue: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
-        };
-        return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status]}`}>{status}</span>
+    const markAsPaid = async (invoiceId) => {
+        const path = `projects/${selectedProject.id}/invoices`;
+        const docRef = doc(db, path, invoiceId);
+        try {
+            await updateDoc(docRef, { status: 'paid' });
+            showToast("Invoice marked as paid.");
+        } catch (error) {
+            console.error("Error marking as paid:", error);
+            showToast("Failed to update invoice.", "error");
+        }
     }
 
-    return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Invoices</h2>
-                <Button onClick={() => { setEditingInvoice(null); setIsModalOpen(true); }} disabled={!canWrite}>
-                    <Icon path={ICONS.plus} className="w-5 h-5"/> New Invoice
-                </Button>
-            </div>
-            
-             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingInvoice ? 'Edit Invoice' : 'New Invoice'}>
-                <InvoiceForm onSave={handleSave} onCancel={() => setIsModalOpen(false)} invoice={editingInvoice} />
-            </Modal>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {invoices.map(inv => (
-                    <Card key={inv.id}>
-                       <div className="flex justify-between items-start">
-                           <div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{inv.invoiceNumber}</p>
-                            <h4 className="font-bold text-lg text-gray-800 dark:text-white">{inv.clientName}</h4>
-                           </div>
-                           {statusBadge(inv.status)}
-                       </div>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-white my-4">₹{inv.amount.toLocaleString('en-IN')}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
-                        <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                             <button onClick={() => generateInvoicePDF(inv)} disabled={!exportLibsLoaded} className="text-gray-500 hover:text-gray-700 dark:hover:text-white flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                                <Icon path={ICONS.download} className="w-5 h-5" /> PDF
-                            </button>
-                            <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
-                            <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
-                        </div>
-                    </Card>
-                ))}
-                 {invoices.length === 0 && <p className="text-center p-8 text-gray-500 dark:text-gray-400 col-span-full">No invoices found.</p>}
-            </div>
-        </div>
-    );
-};
-
-const BillGenerator = ({ invoices, selectedProject, user }) => {
-    const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
-
-    const generateBillPDF = () => {
-        const invoice = invoices.find(inv => inv.id === selectedInvoiceId);
-        if (!invoice) {
-            alert("Please select an invoice to generate a bill.");
-            return;
-        }
-
+    const generateBillPDF = (invoice) => {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         
@@ -822,24 +712,72 @@ const BillGenerator = ({ invoices, selectedProject, user }) => {
         doc.text(footerText, 14, finalY + 15);
         
         doc.save(`Bill-${invoice.invoiceNumber}.pdf`);
+
+        if (window.confirm("Do you want to mark this invoice as Paid?")) {
+            markAsPaid(invoice.id);
+        }
     };
 
-    return (
-        <Card>
-            <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">Generate Bill</h2>
-            <div className="flex gap-4 items-end">
-                <div className="flex-grow">
-                     <Select label="Select Invoice" id="invoice-select" value={selectedInvoiceId} onChange={e => setSelectedInvoiceId(e.target.value)}>
-                        <option value="">-- Choose an invoice --</option>
-                        {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoiceNumber} - {inv.clientName}</option>)}
-                    </Select>
-                </div>
-                <Button onClick={generateBillPDF} disabled={!selectedInvoiceId}>Generate Bill PDF</Button>
-            </div>
-        </Card>
-    )
-}
+    const handleDelete = async (id) => {
+        if (!user || !selectedProject || !canWrite || !window.confirm('Are you sure? This will delete the invoice record.')) return;
+        try {
+            const path = `projects/${selectedProject.id}/invoices`;
+            await deleteDoc(doc(db, path, id));
+            showToast("Invoice deleted.");
+        } catch (error) {
+            console.error("Error deleting invoice: ", error);
+            showToast("Failed to delete invoice.", "error");
+        }
+    };
+    
+    const statusBadge = (status) => {
+        const styles = {
+            pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+            paid: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+            overdue: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+        };
+        return <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status]}`}>{status}</span>
+    }
 
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Invoices & Bills</h2>
+                <Button onClick={() => { setEditingInvoice(null); setIsModalOpen(true); }} disabled={!canWrite}>
+                    <Icon path={ICONS.plus} className="w-5 h-5"/> New Invoice
+                </Button>
+            </div>
+            
+             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingInvoice ? 'Edit Invoice' : 'New Invoice'}>
+                <InvoiceForm onSave={handleSave} onCancel={() => setIsModalOpen(false)} invoice={editingInvoice} />
+            </Modal>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {invoices.map(inv => (
+                    <Card key={inv.id}>
+                       <div className="flex justify-between items-start">
+                           <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{inv.invoiceNumber}</p>
+                            <h4 className="font-bold text-lg text-gray-800 dark:text-white">{inv.clientName}</h4>
+                           </div>
+                           {statusBadge(inv.status)}
+                       </div>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white my-4">{selectedProject.defaultCurrency || '₹'}{inv.amount.toLocaleString('en-IN')}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Due: {new Date(inv.dueDate).toLocaleDateString()}</p>
+                        <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                             <Button onClick={() => generateBillPDF(inv)} disabled={!exportLibsLoaded} className="flex-1" variant="secondary">
+                                Generate Bill
+                            </Button>
+                            <button onClick={() => { setEditingInvoice(inv); setIsModalOpen(true); }} className="text-blue-500 hover:text-blue-700 p-2" disabled={!canWrite}><Icon path={ICONS.edit} /></button>
+                            <button onClick={() => handleDelete(inv.id)} className="text-red-500 hover:text-red-700 p-2" disabled={!canWrite}><Icon path={ICONS.delete} /></button>
+                        </div>
+                    </Card>
+                ))}
+                 {invoices.length === 0 && <p className="text-center p-8 text-gray-500 dark:text-gray-400 col-span-full">No invoices found.</p>}
+            </div>
+        </div>
+    );
+};
 
 // --- Main App Component ---
 
@@ -1147,8 +1085,6 @@ const App = () => {
                 return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} allTags={allTags} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
-            case 'bills':
-                return <BillGenerator invoices={invoices} selectedProject={selectedProject} user={user} />;
             case 'settings':
                 return <ProjectSettings project={selectedProject} onEditProject={handleEditProjectSettings} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
@@ -1215,8 +1151,7 @@ const App = () => {
                     <ul className="space-y-2 flex-grow">
                         {(userRole === 'owner' || userRole?.read?.includes('dashboard')) && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {(userRole === 'owner' || userRole?.read?.includes('transactions')) && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {(userRole === 'owner' || userRole?.read?.includes('invoices')) && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {(userRole === 'owner' || userRole?.write?.includes('invoices')) && <NavLink label="Generate Bill" viewName="bills" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole === 'owner' || userRole?.read?.includes('invoices')) && <NavLink label="Invoices & Bills" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
