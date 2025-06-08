@@ -612,7 +612,7 @@ const App = () => {
     
     // Listen for real-time updates to the selected project (for contributors)
     useEffect(() => {
-        if (!selectedProject) return;
+        if (!selectedProject?.id || !selectedProject?.ownerId) return;
 
         const projectRef = doc(db, `users/${selectedProject.ownerId}/projects/${selectedProject.id}`);
         const unsubscribe = onSnapshot(projectRef, (doc) => {
