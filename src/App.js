@@ -229,7 +229,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
 
-    const canWrite = userRole === 'owner' || userRole === 'read-write' || userRole === 'dashboard-transactions';
+    const canWrite = userRole?.write?.includes('transactions');
 
     const handleSave = async (data) => {
         if (!user || !selectedProject || !canWrite) return;
@@ -405,7 +405,7 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
 
-    const canWrite = userRole === 'owner' || userRole === 'read-write';
+    const canWrite = userRole?.write?.includes('invoices');
     
     const handleSave = async (data, pdfFile) => {
         if (!user || !selectedProject || !canWrite) return;
@@ -548,7 +548,11 @@ const App = () => {
     const [transactions, setTransactions] = useState([]);
     const [invoices, setInvoices] = useState([]);
     
-    const allProjects = useMemo(() => [...projects, ...sharedProjects], [projects, sharedProjects]);
+    const allProjects = useMemo(() => {
+        const projectMap = new Map();
+        [...projects, ...sharedProjects].forEach(p => projectMap.set(p.id, p));
+        return Array.from(projectMap.values());
+    }, [projects, sharedProjects]);
 
     const categories = useMemo(() => {
         const catSet = new Set(transactions.map(t => t.category));
@@ -597,7 +601,7 @@ const App = () => {
 
         // Fetch shared projects
         const sanitizedEmail = user.email.replace(/\./g, '_');
-        const sharedProjectsQuery = query(collection(db, 'projects'), where(`contributors.${sanitizedEmail}`, 'in', ['read', 'read-write', 'dashboard-transactions']));
+        const sharedProjectsQuery = query(collection(db, 'projects'), where(`contributorEmails`, 'array-contains', user.email));
         const unsubscribeShared = onSnapshot(sharedProjectsQuery, (snapshot) => {
             const fetchedShared = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setSharedProjects(fetchedShared);
@@ -617,7 +621,7 @@ const App = () => {
         const projectRef = doc(db, `projects/${selectedProject.id}`);
         const unsubscribe = onSnapshot(projectRef, (doc) => {
             if (doc.exists()) {
-                 setSelectedProject(prev => ({...prev, ...doc.data()}));
+                 setSelectedProject(prev => ({ ...prev, ...doc.data(), id: doc.id }));
             }
         });
 
@@ -637,11 +641,11 @@ const App = () => {
 
         // Determine user role for the selected project
         if (selectedProject.ownerId === user.uid) {
-            setUserRole('owner');
+            setUserRole({ read: ['dashboard', 'transactions', 'invoices'], write: ['dashboard', 'transactions', 'invoices'] });
         } else {
             const sanitizedEmail = user.email.replace(/\./g, '_');
             const role = selectedProject.contributors[sanitizedEmail];
-            setUserRole(role || null);
+            setUserRole(role || { read: [], write: [] });
         }
 
         const projectPath = `projects/${selectedProject.id}`;
@@ -697,7 +701,8 @@ const App = () => {
                 ownerId: user.uid,
                 ownerEmail: user.email,
                 createdAt: new Date(),
-                contributors: {}
+                contributors: {},
+                contributorEmails: []
             });
             setModal({ isOpen: false });
         } catch (error) {
@@ -748,29 +753,26 @@ const App = () => {
         }
     }
 
-    const handleAddContributor = async (project, email, role) => {
+    const handleAddOrUpdateContributor = async (project, email, permissions) => {
         if (!user || project.ownerId !== user.uid) return;
         const sanitizedEmail = email.replace(/\./g, '_');
         const projectRef = doc(db, `projects/${project.id}`);
         try {
-            await updateDoc(projectRef, {
-                [`contributors.${sanitizedEmail}`]: role
-            });
-        } catch (error) {
-            console.error("Error adding contributor:", error);
-        }
-    }
+            const projectSnap = await getDoc(projectRef);
+             if (projectSnap.exists()) {
+                const currentContributors = projectSnap.data().contributors || {};
+                const currentEmails = projectSnap.data().contributorEmails || [];
+                
+                const newContributors = {...currentContributors, [sanitizedEmail]: permissions };
+                const newEmails = [...new Set([...currentEmails, email])];
 
-    const handleUpdateContributorRole = async (project, email, role) => {
-        if (!user || project.ownerId !== user.uid) return;
-        const sanitizedEmail = email.replace(/\./g, '_');
-        const projectRef = doc(db, `projects/${project.id}`);
-        try {
-            await updateDoc(projectRef, {
-                [`contributors.${sanitizedEmail}`]: role
-            });
+                await updateDoc(projectRef, {
+                    contributors: newContributors,
+                    contributorEmails: newEmails
+                });
+             }
         } catch (error) {
-            console.error("Error updating contributor role:", error);
+            console.error("Error adding/updating contributor:", error);
         }
     }
 
@@ -789,8 +791,12 @@ const App = () => {
             if (projectSnap.exists()) {
                 const updatedContributors = { ...projectSnap.data().contributors };
                 delete updatedContributors[sanitizedEmail];
+
+                const updatedEmails = (projectSnap.data().contributorEmails || []).filter(e => e !== email);
+
                 await updateDoc(projectRef, {
-                    contributors: updatedContributors
+                    contributors: updatedContributors,
+                    contributorEmails: updatedEmails
                 });
             }
         } catch(e) {
@@ -809,7 +815,7 @@ const App = () => {
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddContributor} onRemoveContributor={handleRemoveContributor} onUpdateContributorRole={handleUpdateContributorRole} userRole={userRole} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -870,9 +876,9 @@ const App = () => {
                     </div>
 
                     <ul className="space-y-2 flex-grow">
-                        <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
-                        <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
-                        <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />
+                        {(userRole?.read?.includes('dashboard')) && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole?.read?.includes('transactions')) && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {(userRole?.read?.includes('invoices')) && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
@@ -1019,7 +1025,21 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
 const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, onUpdateContributorRole, userRole }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
-    const [contributorRole, setContributorRole] = useState('read');
+    const [permissions, setPermissions] = useState({ read: [], write: [] });
+
+    const handlePermissionChange = (type, page, checked) => {
+        setPermissions(prev => {
+            const newPerms = new Set(prev[type]);
+            if (checked) {
+                newPerms.add(page);
+                if (type === 'write') newPerms.add(page); // Write implies read
+            } else {
+                newPerms.delete(page);
+                 if (type === 'read') newPerms.delete(page); // No read implies no write
+            }
+            return { ...prev, [type]: Array.from(newPerms) };
+        });
+    };
 
     const handleNameSubmit = (e) => {
         e.preventDefault();
@@ -1032,15 +1052,16 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
             alert("Please enter a contributor's email.");
             return;
         }
-        onAddContributor(project, contributorEmail, contributorRole);
+        onAddContributor(project, contributorEmail, permissions);
         setContributorEmail('');
+        setPermissions({ read: [], write: [] });
     }
     
     const handleDeleteData = () => {
         alert('Deleting all project data is a highly destructive action. This feature should be implemented with extreme care, possibly using a Cloud Function for reliability.');
     }
 
-    if(userRole !== 'owner') {
+    if(userRole?.read?.length === 0) {
         return <Card><p>You do not have permission to view project settings.</p></Card>
     }
 
@@ -1057,16 +1078,24 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
             </Card>
             <Card>
                  <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
-                 <form onSubmit={handleAddContributor} className="flex gap-4 items-end mb-6">
-                     <div className='flex-grow'>
-                        <Input label="Contributor Email" id="contributorEmail" type="email" value={contributorEmail} onChange={e => setContributorEmail(e.target.value)} required />
-                     </div>
-                     <div className='flex-grow'>
-                        <Select label="Role" id="contributorRole" value={contributorRole} onChange={e => setContributorRole(e.target.value)}>
-                            <option value="read">Read-Only</option>
-                            <option value="read-write">Read & Write</option>
-                            <option value="dashboard-transactions">Dashboard & Transactions</option>
-                        </Select>
+                 <form onSubmit={handleAddContributor} className="space-y-4 mb-6 border-b pb-6 dark:border-gray-700">
+                     <Input label="New Contributor Email" id="contributorEmail" type="email" value={contributorEmail} onChange={e => setContributorEmail(e.target.value)} required />
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <h4 className='font-semibold mb-2'>Read Access</h4>
+                            <div className='space-y-2'>
+                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'dashboard', e.target.checked)} checked={permissions.read.includes('dashboard')}/> Dashboard</label>
+                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'transactions', e.target.checked)} checked={permissions.read.includes('transactions')}/> Transactions</label>
+                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('read', 'invoices', e.target.checked)} checked={permissions.read.includes('invoices')}/> Invoices</label>
+                            </div>
+                        </div>
+                         <div>
+                            <h4 className='font-semibold mb-2'>Write Access</h4>
+                            <div className='space-y-2'>
+                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'transactions', e.target.checked)} checked={permissions.write.includes('transactions')}/> Transactions</label>
+                                <label className='flex items-center gap-2'><input type="checkbox" onChange={e => handlePermissionChange('write', 'invoices', e.target.checked)} checked={permissions.write.includes('invoices')}/> Invoices</label>
+                            </div>
+                        </div>
                      </div>
                     <Button type="submit">Add Contributor</Button>
                  </form>
@@ -1076,27 +1105,27 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                          <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                              <tr>
                                  <th scope="col" className="px-6 py-3">Email</th>
-                                 <th scope="col" className="px-6 py-3">Role</th>
+                                 <th scope="col" className="px-6 py-3">Permissions</th>
                                  <th scope="col" className="px-6 py-3">Action</th>
                              </tr>
                          </thead>
                          <tbody>
                             <tr className="bg-white dark:bg-gray-800">
                                 <td className="px-6 py-4">{project.ownerEmail}</td>
-                                <td className="px-6 py-4">Owner</td>
+                                <td className="px-6 py-4 font-bold">Owner (Full Access)</td>
                                 <td className="px-6 py-4"></td>
                             </tr>
-                            {project.contributors && Object.entries(project.contributors).map(([email, role]) => (
+                            {project.contributors && Object.entries(project.contributors).map(([email, perms]) => (
                                 <tr key={email} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
                                     <td className="px-6 py-4">{email.replace(/_/g, '.')}</td>
                                     <td className="px-6 py-4">
-                                        <Select value={role} onChange={(e) => onUpdateContributorRole(project, email.replace(/_/g, '.'), e.target.value)} id={`role-${email}`}>
-                                            <option value="read">Read-Only</option>
-                                            <option value="read-write">Read & Write</option>
-                                            <option value="dashboard-transactions">Dashboard & Transactions</option>
-                                        </Select>
+                                        <div className="text-xs">
+                                           <p><b>Read:</b> {perms.read.join(', ') || 'None'}</p>
+                                           <p><b>Write:</b> {perms.write.join(', ') || 'None'}</p>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
+                                        <button onClick={() => alert('Editing permissions coming soon!')} className="text-blue-500 hover:text-blue-700 text-sm mr-4">Edit</button>
                                         <button onClick={() => onRemoveContributor(project, email.replace(/_/g, '.'))} className="text-red-500 hover:text-red-700 text-sm">Remove</button>
                                     </td>
                                 </tr>
