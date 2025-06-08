@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import * as Recharts from 'recharts';
 
 // --- Helper Functions & Configuration ---
 
@@ -264,17 +264,17 @@ const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
                 </div>
                 
                 <h4 className="font-semibold text-lg mb-2">Cash Flow</h4>
-                <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={cashFlowData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}/>
-                        <Legend />
-                        <Line type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} />
-                        <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} />
-                    </LineChart>
-                </ResponsiveContainer>
+                <Recharts.ResponsiveContainer width="100%" height={300}>
+                    <Recharts.LineChart data={cashFlowData}>
+                        <Recharts.CartesianGrid strokeDasharray="3 3" />
+                        <Recharts.XAxis dataKey="date" />
+                        <Recharts.YAxis />
+                        <Recharts.Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}/>
+                        <Recharts.Legend />
+                        <Recharts.Line type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} />
+                        <Recharts.Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} />
+                    </Recharts.LineChart>
+                </Recharts.ResponsiveContainer>
             </Card>
         </div>
     );
