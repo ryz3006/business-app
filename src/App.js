@@ -1456,21 +1456,56 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
     );
 };
 
-
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
+const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [name, setName] = useState(project.name);
-    const [contributorEmail, setContributorEmail] = useState('');
-    const [permissions, setPermissions] = useState({ read: [], write: [] });
-    const [isSaving, setIsSaving] = useState(false);
-    const [isAddingContributor, setIsAddingContributor] = useState(false);
-
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
     const [defaultCurrency, ] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
+    const [isSaving, setIsSaving] = useState(false);
+
+    if (modal.type !== 'editProjectSettings') return null;
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSaving(true);
+        await onSave(project.id, {
+            name,
+            companyName,
+            companyContactMail,
+            companyContactNumber,
+            defaultCurrency,
+            paymentMethods,
+        });
+        setIsSaving(false);
+        setModal({isOpen: false});
+    };
+
+    return (
+        <Modal isOpen={modal.isOpen} onClose={() => setModal({isOpen: false})} title="Edit Project & Company Settings">
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
+                <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
+                <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
+                <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
+                <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} disabled readOnly />
+                <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
+                <div className="flex justify-end gap-4 pt-4">
+                    <Button onClick={() => setModal({isOpen: false})} variant="secondary">Cancel</Button>
+                    <Button type="submit" isLoading={isSaving}>Save Settings</Button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
 
 
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
+    const [contributorEmail, setContributorEmail] = useState('');
+    const [permissions, setPermissions] = useState({ read: [], write: [] });
+    const [isAddingContributor, setIsAddingContributor] = useState(false);
+    
     const handlePermissionChange = (type, page, checked) => {
         setPermissions(prev => {
             const currentPerms = new Set(prev[type]);
@@ -1491,20 +1526,6 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
             }
             return { ...prev, [type]: Array.from(currentPerms) };
         });
-    };
-
-    const handleSettingsSubmit = async (e) => {
-        e.preventDefault();
-        setIsSaving(true);
-        await onEditProject(project.id, {
-            name,
-            companyName,
-            companyContactMail,
-            companyContactNumber,
-            defaultCurrency,
-            paymentMethods
-        });
-        setIsSaving(false);
     };
     
     const handleAddContributor = async (e) => {
@@ -1531,16 +1552,8 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     return (
         <div className="space-y-8">
             <Card>
-                 <form onSubmit={handleSettingsSubmit} className="space-y-4">
-                    <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
-                    <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
-                    <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
-                    <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
-                    <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
-                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} disabled readOnly />
-                    <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
-                    <Button type="submit" isLoading={isSaving}>Save Settings</Button>
-                </form>
+                <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
+                <Button onClick={() => setModal({isOpen: true, type: 'editProjectSettings'})} variant='primary'>Edit Settings</Button>
             </Card>
             <Card>
                  <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
