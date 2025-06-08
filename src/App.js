@@ -1099,6 +1099,7 @@ const App = () => {
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
             <EditContributorModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleAddOrUpdateContributor} />
             <BillGenerationModal modal={modal} setModal={setModal} project={selectedProject} user={user} showToast={showToast} onAddTransaction={handleAddTransactionFromBill} />
+            <EditProjectSettingsModal modal={modal} setModal={setModal} project={selectedProject} onSave={handleEditProjectSettings} />
             
             <nav className="fixed top-0 z-40 w-full bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 md:hidden">
                  <div className="px-3 py-3 lg:px-5 lg:pl-3">
@@ -1530,8 +1531,16 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
     return (
         <div className="space-y-8">
             <Card>
-                <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
-                <Button onClick={() => setModal({isOpen: true, type: 'editProjectSettings'})} variant='primary'>Edit Settings</Button>
+                 <form onSubmit={handleSettingsSubmit} className="space-y-4">
+                    <h3 className="text-xl font-bold mb-4">Project & Company Settings</h3>
+                    <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
+                    <Input label="Company Name" id="companyName" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Your Company LLC" />
+                    <Input label="Company Contact Email" id="companyContactMail" type="email" value={companyContactMail} onChange={e => setCompanyContactMail(e.target.value)} placeholder="contact@yourcompany.com"/>
+                    <Input label="Company Contact Number" id="companyContactNumber" type="tel" value={companyContactNumber} onChange={e => setCompanyContactNumber(e.target.value)} placeholder="+1 234 567 890"/>
+                    <Input label="Default Currency" id="defaultCurrency" value={defaultCurrency} disabled readOnly />
+                    <TextArea label="Payment Methods" id="paymentMethods" value={paymentMethods} onChange={e => setPaymentMethods(e.target.value)} placeholder="e.g., Bank Transfer to Account #12345, UPI ID: yourid@bank" />
+                    <Button type="submit" isLoading={isSaving}>Save Settings</Button>
+                </form>
             </Card>
             <Card>
                  <h3 className="text-xl font-bold mb-4">Manage Contributors</h3>
