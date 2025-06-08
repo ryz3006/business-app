@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, doc, onSnapshot, deleteDoc, updateDoc, query, orderBy, where, getDocs, writeBatch, getDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 // --- Helper Functions & Configuration ---
 
@@ -131,79 +131,150 @@ const Toast = ({ message, show, type = 'success' }) => {
 
 // --- Core Feature Components ---
 
-const Dashboard = ({ transactions, invoices, setView }) => {
-    const stats = useMemo(() => {
+const Dashboard = ({ transactions, invoices, setView, exportLibsLoaded }) => {
+    // State for date range filtering
+    const [startDate, setStartDate] = useState(() => {
+        const date = new Date();
+        date.setDate(date.getDate() - 30);
+        return date.toISOString().split('T')[0];
+    });
+    const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+    // Top-level stats (always up-to-date)
+    const overallStats = useMemo(() => {
         const now = new Date();
         const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         
-        const income = transactions.filter(t => t.type === 'income' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
-        const expenses = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
-        const totalBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+        const incomeThisMonth = transactions.filter(t => t.type === 'income' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
+        const expensesThisMonth = transactions.filter(t => t.type === 'expense' && new Date(t.date) >= thisMonthStart).reduce((sum, t) => sum + t.amount, 0);
+        const currentBalance = transactions.reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
         const pendingInvoices = invoices.filter(i => i.status === 'pending');
         
-        return { income, expenses, totalBalance, pendingInvoices };
+        return { incomeThisMonth, expensesThisMonth, currentBalance, pendingInvoices };
     }, [transactions, invoices]);
 
-    const expenseByCategory = useMemo(() => {
-        const categoryMap = {};
-        transactions.filter(t => t.type === 'expense').forEach(t => {
-            const category = t.category || 'Uncategorized';
-            categoryMap[category] = (categoryMap[category] || 0) + t.amount;
+    // Data filtered by the selected date range
+    const filteredTransactions = useMemo(() => {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // Include the whole end day
+        return transactions.filter(t => {
+            const tDate = new Date(t.date);
+            return tDate >= start && tDate <= end;
         });
-        return Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
-    }, [transactions]);
+    }, [transactions, startDate, endDate]);
+
+    const cashFlowData = useMemo(() => {
+        const flow = {};
+        filteredTransactions.forEach(t => {
+            const date = new Date(t.date).toISOString().split('T')[0];
+            if(!flow[date]) {
+                flow[date] = { date, income: 0, expense: 0 };
+            }
+            if (t.type === 'income') flow[date].income += t.amount;
+            if (t.type === 'expense') flow[date].expense += t.amount;
+        });
+        return Object.values(flow).sort((a, b) => new Date(a.date) - new Date(b.date));
+    }, [filteredTransactions]);
+
+    const handlePresetChange = (e) => {
+        const value = e.target.value;
+        const today = new Date();
+        const end = new Date();
+        let start = new Date();
+
+        switch(value) {
+            case 'today':
+                start = today;
+                break;
+            case '7d':
+                start.setDate(today.getDate() - 7);
+                break;
+            case 'this_month':
+                start = new Date(today.getFullYear(), today.getMonth(), 1);
+                break;
+            case '3m':
+                start.setMonth(today.getMonth() - 3);
+                break;
+            case '6m':
+                start.setMonth(today.getMonth() - 6);
+                break;
+            case '1y':
+                start.setFullYear(today.getFullYear() - 1);
+                break;
+            default:
+                return;
+        }
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+    };
     
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560'];
-
+    const exportReportPDF = () => {
+        // PDF generation logic would go here
+        alert("PDF Report download coming soon!");
+    }
+    
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card className="lg:col-span-1 bg-gradient-to-br from-green-400 to-green-600 text-white">
-                <h4 className="font-bold text-lg">Total Balance</h4>
-                <p className="text-3xl font-bold mt-2">₹{stats.totalBalance.toLocaleString('en-IN')}</p>
-            </Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-blue-400 to-blue-600 text-white">
-                <h4 className="font-bold text-lg">Income (This Month)</h4>
-                <p className="text-3xl font-bold mt-2">₹{stats.income.toLocaleString('en-IN')}</p>
-            </Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-red-400 to-red-600 text-white">
-                <h4 className="font-bold text-lg">Expenses (This Month)</h4>
-                <p className="text-3xl font-bold mt-2">₹{stats.expenses.toLocaleString('en-IN')}</p>
-            </Card>
-            <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-400 to-yellow-600 text-white cursor-pointer" onClick={() => setView('invoices')}>
-                 <h4 className="font-bold text-lg">Pending Invoices</h4>
-                <p className="text-3xl font-bold mt-2">{stats.pendingInvoices.length}</p>
-            </Card>
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card className="lg:col-span-1 bg-gradient-to-br from-green-400 to-green-600 text-white">
+                    <h4 className="font-bold text-lg">Current Balance</h4>
+                    <p className="text-3xl font-bold mt-2">₹{overallStats.currentBalance.toLocaleString('en-IN')}</p>
+                </Card>
+                <Card className="lg:col-span-1 bg-gradient-to-br from-blue-400 to-blue-600 text-white">
+                    <h4 className="font-bold text-lg">Income (This Month)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{overallStats.incomeThisMonth.toLocaleString('en-IN')}</p>
+                </Card>
+                <Card className="lg:col-span-1 bg-gradient-to-br from-red-400 to-red-600 text-white">
+                    <h4 className="font-bold text-lg">Expenses (This Month)</h4>
+                    <p className="text-3xl font-bold mt-2">₹{overallStats.expensesThisMonth.toLocaleString('en-IN')}</p>
+                </Card>
+                <Card className="lg:col-span-1 bg-gradient-to-br from-yellow-400 to-yellow-600 text-white cursor-pointer" onClick={() => setView('invoices')}>
+                    <h4 className="font-bold text-lg">Pending Invoices</h4>
+                    <p className="text-3xl font-bold mt-2">{overallStats.pendingInvoices.length}</p>
+                </Card>
+            </div>
 
-            <Card className="md:col-span-2 lg:col-span-2">
-                <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Expense Breakdown</h3>
+            <Card>
+                <h3 className="text-xl font-bold mb-4">Cash Flow Report</h3>
+                <div className="flex flex-wrap gap-4 items-end mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <div className="flex-grow">
+                        <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">From</label>
+                        <Input type="date" id="start-date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                    </div>
+                     <div className="flex-grow">
+                        <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">To</label>
+                        <Input type="date" id="end-date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    </div>
+                     <div className="flex-grow">
+                        <label htmlFor="presets" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Presets</label>
+                        <Select id="presets" onChange={handlePresetChange}>
+                            <option value="">Select range</option>
+                            <option value="today">Today</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="this_month">This Month</option>
+                            <option value="3m">Last 3 Months</option>
+                            <option value="6m">Last 6 Months</option>
+                            <option value="1y">Last 1 Year</option>
+                        </Select>
+                    </div>
+                    <Button onClick={exportReportPDF} variant="secondary" disabled={!exportLibsLoaded}>
+                        <Icon path={ICONS.download} className="w-5 h-5"/> Download PDF
+                    </Button>
+                </div>
+                
+                <h4 className="font-semibold text-lg mb-2">Cash Flow</h4>
                 <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                        <Pie data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
-                            {expenseByCategory.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />
+                    <LineChart data={cashFlowData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}/>
                         <Legend />
-                    </PieChart>
+                        <Line type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} />
+                        <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} />
+                    </LineChart>
                 </ResponsiveContainer>
-            </Card>
-
-            <Card className="md:col-span-2 lg:col-span-2">
-                 <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white">Recent Transactions</h3>
-                 <div className="space-y-3 max-h-72 overflow-y-auto">
-                    {transactions.slice(0, 5).map(t => (
-                        <div key={t.id} className="flex justify-between items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
-                           <div>
-                               <p className="font-semibold text-gray-800 dark:text-white">{t.description}</p>
-                               <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(t.date).toLocaleDateString()} by {t.user}</p>
-                           </div>
-                            <p className={`font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                                {t.type === 'income' ? '+' : '-'}₹{t.amount.toLocaleString('en-IN')}
-                            </p>
-                        </div>
-                    ))}
-                 </div>
             </Card>
         </div>
     );
@@ -861,7 +932,7 @@ const App = () => {
     const renderView = () => {
         switch (view) {
             case 'dashboard':
-                return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
+                return <Dashboard transactions={transactions} invoices={invoices} setView={setView} exportLibsLoaded={exportLibsLoaded}/>;
             case 'transactions':
                 return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
