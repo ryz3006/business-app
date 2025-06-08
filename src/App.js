@@ -610,6 +610,21 @@ const App = () => {
         };
     }, [user]);
     
+    // Listen for real-time updates to the selected project (for contributors)
+    useEffect(() => {
+        if (!selectedProject) return;
+
+        const projectRef = doc(db, `users/${selectedProject.ownerId}/projects/${selectedProject.id}`);
+        const unsubscribe = onSnapshot(projectRef, (doc) => {
+            if (doc.exists()) {
+                setSelectedProject(prev => ({ ...prev, ...doc.data() }));
+            }
+        });
+
+        return () => unsubscribe();
+    }, [selectedProject?.id, selectedProject?.ownerId]);
+
+
     // Fetch data for the selected project and determine user role
     useEffect(() => {
         if (!user || !selectedProject) {
@@ -744,6 +759,19 @@ const App = () => {
         }
     }
 
+    const handleUpdateContributorRole = async (project, email, role) => {
+        if (!user || project.ownerId !== user.uid) return;
+        const sanitizedEmail = email.replace(/\./g, '_');
+        const projectRef = doc(db, `users/${user.uid}/projects/${project.id}`);
+        try {
+            await updateDoc(projectRef, {
+                [`contributors.${sanitizedEmail}`]: role
+            });
+        } catch (error) {
+            console.error("Error updating contributor role:", error);
+        }
+    }
+
     const handleRemoveContributor = async (project, email) => {
         if (!user || project.ownerId !== user.uid) {
             alert("Only the project owner can remove contributors.");
@@ -780,7 +808,7 @@ const App = () => {
             case 'invoices':
                 return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} />;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddContributor} onRemoveContributor={handleRemoveContributor} onUpdateContributorRole={handleUpdateContributorRole} userRole={userRole} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -987,7 +1015,7 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
     );
 }
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, onUpdateContributorRole, userRole }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [contributorRole, setContributorRole] = useState('read');
@@ -1060,7 +1088,13 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                             {project.contributors && Object.entries(project.contributors).map(([email, role]) => (
                                 <tr key={email} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700">
                                     <td className="px-6 py-4">{email.replace(/_/g, '.')}</td>
-                                    <td className="px-6 py-4">{role}</td>
+                                    <td className="px-6 py-4">
+                                        <Select value={role} onChange={(e) => onUpdateContributorRole(project, email.replace(/_/g, '.'), e.target.value)} id={`role-${email}`}>
+                                            <option value="read">Read-Only</option>
+                                            <option value="read-write">Read & Write</option>
+                                            <option value="dashboard-transactions">Dashboard & Transactions</option>
+                                        </Select>
+                                    </td>
                                     <td className="px-6 py-4">
                                         <button onClick={() => onRemoveContributor(project, email.replace(/_/g, '.'))} className="text-red-500 hover:text-red-700 text-sm">Remove</button>
                                     </td>
