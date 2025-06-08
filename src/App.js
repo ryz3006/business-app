@@ -1415,7 +1415,7 @@ const BillGenerationModal = ({ modal, setModal, project, user, showToast, onAddT
     const handleProcess = async () => {
         setIsProcessing(true);
 
-        const docType = status === 'paid' ? 'bill' : 'invoice';
+        const docType = invoice.status === 'paid' ? 'bill' : 'invoice';
         generatePDF(invoice, docType);
 
         if (canWrite) {
@@ -1470,7 +1470,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency] = useState('₹');
+    const [defaultCurrency, ] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
