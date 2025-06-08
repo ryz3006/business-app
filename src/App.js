@@ -32,6 +32,14 @@ const Icon = ({ path, className = "w-6 h-6" }) => (
     </svg>
 );
 
+const Spinner = () => (
+    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
+
+
 const ICONS = {
     dashboard: "M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z",
     transactions: "M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5",
@@ -55,7 +63,7 @@ const Card = ({ children, className = "" }) => (
     </div>
 );
 
-const Button = ({ onClick, children, className = "", variant = 'primary', ...props }) => {
+const Button = ({ onClick, children, className = "", variant = 'primary', isLoading = false, ...props }) => {
     const baseClasses = "px-4 py-2 rounded-lg font-semibold text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed";
     const variants = {
         primary: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500',
@@ -63,8 +71,8 @@ const Button = ({ onClick, children, className = "", variant = 'primary', ...pro
         danger: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',
     };
     return (
-        <button onClick={onClick} className={`${baseClasses} ${variants[variant]} ${className}`} {...props}>
-            {children}
+        <button onClick={onClick} className={`${baseClasses} ${variants[variant]} ${className}`} disabled={isLoading} {...props}>
+            {isLoading ? <Spinner/> : children}
         </button>
     );
 };
@@ -103,6 +111,22 @@ const Select = React.forwardRef(({ label, id, children, ...props }, ref) => (
         </select>
     </div>
 ));
+
+const Toast = ({ message, show, type = 'success' }) => {
+    if (!show) return null;
+
+    const baseClasses = "fixed bottom-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white transition-opacity duration-300";
+    const typeClasses = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+    }
+
+    return (
+        <div className={`${baseClasses} ${typeClasses[type]}`}>
+            {message}
+        </div>
+    );
+};
 
 
 // --- Core Feature Components ---
@@ -192,10 +216,12 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
     const [date, setDate] = useState(transaction?.date || new Date().toISOString().split('T')[0]);
     const [description, setDescription] = useState(transaction?.description || '');
     const [tags, setTags] = useState(transaction?.tags?.join(', ') || '');
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onSave({
+        setIsSaving(true);
+        await onSave({
             type,
             amount: parseFloat(amount),
             category,
@@ -203,6 +229,7 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
             description,
             tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
         });
+        setIsSaving(false);
     };
     
     return (
@@ -218,13 +245,13 @@ const TransactionForm = ({ onSave, onCancel, transaction }) => {
             <Input label="Tags (comma-separated)" id="tags" type="text" value={tags} onChange={e => setTags(e.target.value)} placeholder="e.g., business, personal" />
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onCancel} variant="secondary" type="button">Cancel</Button>
-                <Button type="submit">Save</Button>
+                <Button type="submit" isLoading={isSaving}>Save</Button>
             </div>
         </form>
     );
 };
 
-const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded, userRole }) => {
+const Transactions = ({ user, selectedProject, transactions, setTransactions, categories, exportLibsLoaded, userRole, showToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState(null);
     const [filter, setFilter] = useState('all');
@@ -238,6 +265,7 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
             if (editingTransaction) {
                 const docRef = doc(db, path, editingTransaction.id);
                 await updateDoc(docRef, data);
+                showToast("Transaction updated successfully!");
             } else {
                 await addDoc(collection(db, path), {
                     ...data,
@@ -245,9 +273,11 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
                     userEmail: user.email,
                     createdAt: new Date(),
                 });
+                showToast("Transaction added successfully!");
             }
         } catch (error) {
             console.error("Error saving transaction: ", error);
+            showToast("Failed to save transaction.", "error");
         }
         setIsModalOpen(false);
         setEditingTransaction(null);
@@ -258,8 +288,10 @@ const Transactions = ({ user, selectedProject, transactions, setTransactions, ca
         try {
             const path = `projects/${selectedProject.id}/transactions`;
             await deleteDoc(doc(db, path, id));
+            showToast("Transaction deleted.");
         } catch (error) {
             console.error("Error deleting transaction: ", error);
+            showToast("Failed to delete transaction.", "error");
         }
     };
     
@@ -371,15 +403,18 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
     const [dueDate, setDueDate] = useState(invoice?.dueDate || new Date().toISOString().split('T')[0]);
     const [status, setStatus] = useState(invoice?.status || 'pending');
     const [pdfFile, setPdfFile] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onSave({
+        setIsSaving(true);
+        await onSave({
             clientName,
             amount: parseFloat(amount),
             dueDate,
             status
         }, pdfFile);
+        setIsSaving(false);
     };
 
     return (
@@ -395,13 +430,13 @@ const InvoiceForm = ({ onSave, onCancel, invoice }) => {
             <Input label="Upload Bill (PDF)" id="pdfFile" type="file" accept="application/pdf" onChange={e => setPdfFile(e.target.files[0])} />
             <div className="flex justify-end gap-4 pt-4">
                 <Button onClick={onCancel} variant="secondary" type="button">Cancel</Button>
-                <Button type="submit">Save Invoice</Button>
+                <Button type="submit" isLoading={isSaving}>Save Invoice</Button>
             </div>
         </form>
     );
 };
 
-const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded, userRole }) => {
+const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoaded, userRole, showToast }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
 
@@ -426,15 +461,18 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
             if (editingInvoice) {
                 const docRef = doc(db, path, editingInvoice.id);
                 await updateDoc(docRef, invoiceData);
+                showToast("Invoice updated!");
             } else {
                 await addDoc(collection(db, path), {
                     ...invoiceData,
                     createdAt: new Date(),
                     invoiceNumber: `INV-${Date.now().toString().slice(-6)}`
                 });
+                showToast("Invoice added!");
             }
         } catch (error) {
             console.error("Error saving invoice: ", error);
+            showToast("Failed to save invoice.", "error");
         }
         setIsModalOpen(false);
         setEditingInvoice(null);
@@ -445,9 +483,10 @@ const Invoices = ({ user, selectedProject, invoices, setInvoices, exportLibsLoad
         try {
             const path = `projects/${selectedProject.id}/invoices`;
             await deleteDoc(doc(db, path, id));
-            // Note: This does not delete the file from storage to prevent accidental data loss.
+            showToast("Invoice deleted.");
         } catch (error) {
             console.error("Error deleting invoice: ", error);
+            showToast("Failed to delete invoice.", "error");
         }
     };
     
@@ -543,6 +582,7 @@ const App = () => {
     const [selectedProject, setSelectedProject] = useState(null);
     const [modal, setModal] = useState({ isOpen: false, type: '', data: null });
     const [userRole, setUserRole] = useState(null);
+    const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
     // Data states
     const [transactions, setTransactions] = useState([]);
@@ -558,6 +598,11 @@ const App = () => {
         const catSet = new Set(transactions.map(t => t.category));
         return Array.from(catSet);
     }, [transactions]);
+
+    const showToast = (message, type = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast({ show: false, message: '', type }), 3000);
+    };
 
     // Check if the external export libraries have loaded
     useEffect(() => {
@@ -702,9 +747,11 @@ const App = () => {
                 contributors: {},
                 contributorEmails: []
             });
+            showToast("Project created successfully!");
             setModal({ isOpen: false });
         } catch (error) {
             console.error("Error adding project:", error);
+            showToast("Error creating project.", "error");
         }
     };
 
@@ -713,9 +760,11 @@ const App = () => {
         try {
             const docRef = doc(db, `projects/${projectId}`);
             await updateDoc(docRef, { name: newName });
+            showToast("Project name updated!");
             setModal({ isOpen: false });
         } catch (error) {
             console.error("Error updating project:", error);
+            showToast("Error updating project name.", "error");
         }
     }
     
@@ -745,9 +794,11 @@ const App = () => {
 
             setSelectedProject(null);
             setModal({ isOpen: false });
+            showToast("Project deleted successfully.");
 
         } catch (error) {
             console.error("Error deleting project:", error);
+            showToast("Error deleting project.", "error");
         }
     }
 
@@ -768,9 +819,11 @@ const App = () => {
                     contributors: newContributors,
                     contributorEmails: newEmails
                 });
+                showToast("Contributor permissions saved!");
              }
         } catch (error) {
             console.error("Error adding/updating contributor:", error);
+            showToast("Failed to save contributor.", "error");
         }
     }
 
@@ -796,10 +849,11 @@ const App = () => {
                     contributors: updatedContributors,
                     contributorEmails: updatedEmails
                 });
+                showToast("Contributor removed.");
             }
         } catch(e) {
             console.error("Error removing contributor", e);
-            alert("Failed to remove contributor.");
+            showToast("Failed to remove contributor.", "error");
         }
     }
 
@@ -809,11 +863,11 @@ const App = () => {
             case 'dashboard':
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
             case 'transactions':
-                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded} userRole={userRole}/>;
+                return <Transactions user={user} selectedProject={selectedProject} transactions={transactions} setTransactions={setTransactions} categories={categories} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast}/>;
             case 'invoices':
-                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} />;
+                return <Invoices user={user} selectedProject={selectedProject} invoices={invoices} setInvoices={setInvoices} exportLibsLoaded={exportLibsLoaded} userRole={userRole} showToast={showToast} />;
             case 'settings':
-                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal}/>;
+                return <ProjectSettings project={selectedProject} onEditProject={handleEditProject} onDeleteProject={handleDeleteProject} onAddContributor={handleAddOrUpdateContributor} onRemoveContributor={handleRemoveContributor} userRole={userRole} setModal={setModal} showToast={showToast} />;
             default:
                 return <Dashboard transactions={transactions} invoices={invoices} setView={setView}/>;
         }
@@ -845,6 +899,7 @@ const App = () => {
 
     return (
         <div className="bg-gray-100 dark:bg-gray-900 min-h-screen">
+            <Toast {...toast} />
             {/* Modals */}
             <ProjectModal modal={modal} setModal={setModal} onAddProject={handleAddProject} />
             <LimitReachedModal modal={modal} setModal={setModal} projects={projects} onDeleteProject={handleDeleteProject} />
@@ -934,8 +989,8 @@ const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSign
             <Card>
                  <div className="flex justify-between items-center mb-6">
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Select a Project</h2>
-                        <p className="text-gray-500 dark:text-gray-400">Choose a project or create a new one.</p>
+                        <h1 className="text-4xl font-bold text-gray-800 dark:text-white">Amigos</h1>
+                        <p className="text-xl font-light text-blue-600 dark:text-blue-400">Business Manager</p>
                     </div>
                     <div className="flex items-center gap-3">
                          <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full" />
@@ -968,12 +1023,15 @@ const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSign
 
 const ProjectModal = ({ modal, setModal, onAddProject }) => {
     const [projectName, setProjectName] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
 
     if (modal.type !== 'addProject') return null;
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onAddProject(projectName);
+        setIsSaving(true);
+        await onAddProject(projectName);
+        setIsSaving(false);
         setProjectName('');
     }
 
@@ -983,7 +1041,7 @@ const ProjectModal = ({ modal, setModal, onAddProject }) => {
                 <Input label="Project Name" id="projectName" type="text" value={projectName} onChange={e => setProjectName(e.target.value)} required />
                 <div className="flex justify-end gap-4 pt-4">
                     <Button onClick={() => setModal({ isOpen: false })} variant="secondary" type="button">Cancel</Button>
-                    <Button type="submit">Create Project</Button>
+                    <Button type="submit" isLoading={isSaving}>Create Project</Button>
                 </div>
             </form>
         </Modal>
@@ -1024,6 +1082,7 @@ const LimitReachedModal = ({ modal, setModal, projects, onDeleteProject }) => {
 const EditContributorModal = ({ modal, setModal, project, onSave }) => {
     const { email, perms } = modal.data || {};
     const [permissions, setPermissions] = useState(perms || { read: [], write: [] });
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         if(modal.data?.perms) {
@@ -1055,8 +1114,10 @@ const EditContributorModal = ({ modal, setModal, project, onSave }) => {
         });
     };
     
-    const handleSave = () => {
-        onSave(project, email, permissions);
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave(project, email, permissions);
+        setIsSaving(false);
         setModal({ isOpen: false });
     }
 
@@ -1082,7 +1143,7 @@ const EditContributorModal = ({ modal, setModal, project, onSave }) => {
                  </div>
                 <div className="flex justify-end gap-4 pt-4">
                     <Button onClick={() => setModal({isOpen: false})} variant="secondary">Cancel</Button>
-                    <Button onClick={handleSave}>Save Changes</Button>
+                    <Button onClick={handleSave} isLoading={isSaving}>Save Changes</Button>
                 </div>
             </div>
         </Modal>
@@ -1090,10 +1151,12 @@ const EditContributorModal = ({ modal, setModal, project, onSave }) => {
 };
 
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContributor, onRemoveContributor, userRole, setModal, showToast }) => {
     const [name, setName] = useState(project.name);
     const [contributorEmail, setContributorEmail] = useState('');
     const [permissions, setPermissions] = useState({ read: [], write: [] });
+    const [isSavingName, setIsSavingName] = useState(false);
+    const [isAddingContributor, setIsAddingContributor] = useState(false);
 
     const handlePermissionChange = (type, page, checked) => {
         setPermissions(prev => {
@@ -1117,18 +1180,22 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
         });
     };
 
-    const handleNameSubmit = (e) => {
+    const handleNameSubmit = async (e) => {
         e.preventDefault();
-        onEditProject(project.id, name);
+        setIsSavingName(true);
+        await onEditProject(project.id, name);
+        setIsSavingName(false);
     };
     
-    const handleAddContributor = (e) => {
+    const handleAddContributor = async (e) => {
         e.preventDefault();
         if (!contributorEmail) {
             alert("Please enter a contributor's email.");
             return;
         }
-        onAddContributor(project, contributorEmail, permissions);
+        setIsAddingContributor(true);
+        await onAddContributor(project, contributorEmail, permissions);
+        setIsAddingContributor(false);
         setContributorEmail('');
         setPermissions({ read: [], write: [] });
     }
@@ -1149,7 +1216,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                     <div className='flex-grow'>
                         <Input label="Project Name" id="editProjectName" value={name} onChange={e => setName(e.target.value)} />
                     </div>
-                    <Button type="submit">Save Name</Button>
+                    <Button type="submit" isLoading={isSavingName}>Save Name</Button>
                 </form>
             </Card>
             <Card>
@@ -1173,7 +1240,7 @@ const ProjectSettings = ({ project, onEditProject, onDeleteProject, onAddContrib
                             </div>
                         </div>
                      </div>
-                    <Button type="submit">Add Contributor</Button>
+                    <Button type="submit" isLoading={isAddingContributor}>Add Contributor</Button>
                  </form>
                  <div className="space-y-2">
                      <h4 className="text-lg font-semibold">Current Contributors</h4>
