@@ -600,8 +600,7 @@ const App = () => {
         });
 
         // Fetch shared projects
-        const sanitizedEmail = user.email.replace(/\./g, '_');
-        const sharedProjectsQuery = query(collection(db, 'projects'), where(`contributorEmails`, 'array-contains', user.email));
+        const sharedProjectsQuery = query(collection(db, 'projects'), where("contributorEmails", 'array-contains', user.email));
         const unsubscribeShared = onSnapshot(sharedProjectsQuery, (snapshot) => {
             const fetchedShared = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setSharedProjects(fetchedShared);
@@ -621,7 +620,7 @@ const App = () => {
         const projectRef = doc(db, `projects/${selectedProject.id}`);
         const unsubscribe = onSnapshot(projectRef, (doc) => {
             if (doc.exists()) {
-                 setSelectedProject(prev => ({ ...prev, ...doc.data(), id: doc.id }));
+                 setSelectedProject(prev => ({...prev, ...doc.data(), id: doc.id}));
             }
         });
 
@@ -876,9 +875,9 @@ const App = () => {
                     </div>
 
                     <ul className="space-y-2 flex-grow">
-                        {(userRole?.read?.includes('dashboard')) && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {(userRole?.read?.includes('transactions')) && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
-                        {(userRole?.read?.includes('invoices')) && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {userRole?.read?.includes('dashboard') && <NavLink label="Dashboard" viewName="dashboard" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {userRole?.read?.includes('transactions') && <NavLink label="Transactions" viewName="transactions" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
+                        {userRole?.read?.includes('invoices') && <NavLink label="Invoices" viewName="invoices" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                         {userRole === 'owner' && <NavLink label="Project Settings" viewName="settings" currentView={view} setView={setView} setIsSidebarOpen={setIsSidebarOpen} />}
                     </ul>
                     <div className="mt-auto">
