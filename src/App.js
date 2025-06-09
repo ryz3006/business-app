@@ -1231,8 +1231,7 @@ const App = () => {
             <aside className={`fixed top-0 left-0 z-30 w-64 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 flex flex-col">
                     <div className='pl-2.5 mb-5'>
-                        <h1 className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos</h1>
-                        <p className="text-sm text-blue-400 truncate">{selectedProject.name}</p>
+                        <h1 className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos - Business App</h1>
                     </div>
 
                     <ul className="space-y-2 flex-grow">
@@ -1777,7 +1776,7 @@ const PrivacyPolicyModal = ({ modal, setModal }) => {
             <div className="space-y-4 text-sm text-gray-600 dark:text-gray-300">
                 <p><strong>Data Management:</strong> Your data, including financial transactions and project details, is stored securely in your private space on Google's Firebase servers. We use Firebase Authentication for secure sign-in and Firestore Security Rules to ensure that only you and the contributors you explicitly invite can access your project data.</p>
                 <p><strong>Data Deletion:</strong> You have full control over your data. You can delete individual entries (transactions, invoices) or delete all content within a project from the "Project Settings" page. Deleting a project permanently removes all associated data from our servers. This action is irreversible.</p>
-                <p><strong>Usage Limits:</strong> As this is a free-to-use application, there are some limitations in place. Each user is allowed a maximum of 5 projects. The total storage per user is currently limited to approximately 500MB. These limits are in place to ensure fair usage for all users on this test setup.</p>
+                <p><strong>Usage Limits:</strong> As this is a free-to-use application, there are some limitations in place. Each user is allowed a maximum of 5 projects. The total storage for this test setup is 500MB. Please try to limit your usage to a maximum of 10MB per user and delete older records manually to ensure smooth operation for everyone.</p>
             </div>
         </Modal>
     );
