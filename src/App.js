@@ -1231,7 +1231,9 @@ const App = () => {
             <aside className={`fixed top-0 left-0 z-30 w-64 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 flex flex-col">
                     <div className='pl-2.5 mb-5'>
-                        <h1 className="text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos - Business App</h1>
+                        <h1 className="text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos</h1>
+                        <p className="text-sm font-light text-blue-400">Business App</p>
+                        <p className="text-lg mt-2 text-gray-400 truncate">{selectedProject.name}</p>
                     </div>
 
                     <ul className="space-y-2 flex-grow">
@@ -1331,7 +1333,7 @@ const ProjectSelector = ({ user, projects, onSelectProject, onAddProject, onSign
 const BrandingHeader = () => (
     <div className='text-center mb-6'>
         <h1 className="text-4xl md:text-5xl font-bold text-gray-800 dark:text-white">Amigos</h1>
-        <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400">Business Manager</p>
+        <p className="text-xl md:text-2xl font-light text-blue-600 dark:text-blue-400">Business App</p>
     </div>
 );
 
@@ -1584,7 +1586,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     const [companyName, setCompanyName] = useState(project.companyName || '');
     const [companyContactMail, setCompanyContactMail] = useState(project.companyContactMail || '');
     const [companyContactNumber, setCompanyContactNumber] = useState(project.companyContactNumber || '');
-    const [defaultCurrency, ] = useState('₹');
+    const [defaultCurrency] = useState('₹');
     const [paymentMethods, setPaymentMethods] = useState(project.paymentMethods || '');
     const [isSaving, setIsSaving] = useState(false);
 
