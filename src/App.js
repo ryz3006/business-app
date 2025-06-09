@@ -1624,7 +1624,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
+const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
     
     const handleAddContributorClick = () => {
         setModal({ isOpen: true, type: 'addContributor', data: project });
