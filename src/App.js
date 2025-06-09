@@ -1231,7 +1231,7 @@ const App = () => {
             <aside className={`fixed top-0 left-0 z-30 w-64 h-screen transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
                 <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 flex flex-col">
                     <div className='pl-2.5 mb-5'>
-                        <h1 className="self-center text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos - Business App</h1>
+                        <h1 className="text-2xl font-extrabold whitespace-nowrap dark:text-white">Amigos - Business App</h1>
                     </div>
 
                     <ul className="space-y-2 flex-grow">
@@ -1623,7 +1623,7 @@ const EditProjectSettingsModal = ({ modal, setModal, onSave, project }) => {
     );
 };
 
-const ProjectSettings = ({ project, onEditProject, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
+const ProjectSettings = ({ project, onDeleteProject, onDeleteProjectContent, onAddContributor, onRemoveContributor, userRole, setModal }) => {
     
     const handleAddContributorClick = () => {
         setModal({ isOpen: true, type: 'addContributor', data: project });
